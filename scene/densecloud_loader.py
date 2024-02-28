@@ -47,8 +47,8 @@ def read_densecloud_extrinsics(path: str, scale=1.0):
                 tvec = tvec.squeeze() # rest of the code expects (3,) shape
                 tvec = tvec * scale
 
-                # Assuming images are prepended zeros until length 6
-                image_name = f"{image_id:06}.png"
+                # Assuming images are prepended zeros until length 5
+                image_name = f"{image_id:05}.jpg"
 
                 # These are normally there in the COLMAP images.txt files but we don't need them
                 xys = None
@@ -61,7 +61,7 @@ def read_densecloud_extrinsics(path: str, scale=1.0):
 
     return images
 
-def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=True):
+def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=False):
     """
     Heavily based off of `read_extrinsics_text` from the original repo.
     The only addition is to use a scaling factor for the translation components
