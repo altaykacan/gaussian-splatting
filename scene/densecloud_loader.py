@@ -1,6 +1,6 @@
 import numpy as np
 
-from .colmap_loader import CameraModel, Camera, BaseImage, Point3D, CAMERA_MODELS, CAMERA_MODEL_IDS, CAMERA_MODEL_NAMES, Image, rotmat2qvec, qvec2rotmat
+from .colmap_loader import CameraModel, Camera, BaseImage, Point3D, CAMERA_MODELS, CAMERA_MODEL_IDS, CAMERA_MODEL_NAMES, Image, rotmat2qvec, qvec2rotmat, read_next_bytes
 
 def read_densecloud_extrinsics(path: str, scale=1.0):
     """
@@ -61,6 +61,87 @@ def read_densecloud_extrinsics(path: str, scale=1.0):
 
     return images
 
+def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=True):
+    """
+    Heavily based off of `read_extrinsics_text` from the original repo.
+    The only addition is to use a scaling factor for the translation components
+    since the poses and the pointcloud come from separate sources.
+    """
+    images = {}
+
+    if not raw_colmap_file:
+        print("Assuming the colmap output images.txt has been cleaned such that it only has a single line per image and no information about the projections of 3D points to each image.")
+
+    with open(path, "r") as fid:
+        while True:
+            line = fid.readline()
+            if not line:
+                break
+            line = line.strip()
+            if len(line) > 0 and line[0] != "#":
+                elems = line.split()
+                image_id = int(elems[0])
+                qvec = np.array(tuple(map(float, elems[1:5]))) # qw qx qy qz
+
+                tvec = np.array(tuple(map(float, elems[5:8]))) * scale # tx ty tz
+
+                camera_id = int(elems[8])
+                image_name = elems[9]
+
+                if raw_colmap_file:
+                    elems = fid.readline().split()
+                    xys = np.column_stack([tuple(map(float, elems[0::3])),
+                                        tuple(map(float, elems[1::3]))])
+                    point3D_ids = np.array(tuple(map(int, elems[2::3])))
+                else:
+                    xys = None
+                    point3D_ids = None
+
+                images[image_id] = Image(
+                    id=image_id, qvec=qvec, tvec=tvec,
+                    camera_id=camera_id, name=image_name,
+                    xys=xys, point3D_ids=point3D_ids)
+    return images
+
+
+def read_densecloud_extrinsics_colmap_binary(path: str, scale=1.0):
+    """
+    Heavily based off of `read_extrinsics_binary` from the original repo.
+    The only addition is to use a scaling factor for the translation components
+    since the poses and the pointcloud come from separate sources.
+    """
+    images = {}
+    with open(path, "rb") as fid:
+        num_reg_images = read_next_bytes(fid, 8, "Q")[0]
+        for _ in range(num_reg_images):
+            binary_image_properties = read_next_bytes(
+                fid, num_bytes=64, format_char_sequence="idddddddi")
+            image_id = binary_image_properties[0]
+            qvec = np.array(binary_image_properties[1:5])
+
+            tvec = np.array(binary_image_properties[5:8]) * scale
+
+            camera_id = binary_image_properties[8]
+            image_name = ""
+            current_char = read_next_bytes(fid, 1, "c")[0]
+            while current_char != b"\x00":   # look for the ASCII 0 entry
+                image_name += current_char.decode("utf-8")
+                current_char = read_next_bytes(fid, 1, "c")[0]
+            num_points2D = read_next_bytes(fid, num_bytes=8,
+                                           format_char_sequence="Q")[0]
+            x_y_id_s = read_next_bytes(fid, num_bytes=24*num_points2D,
+                                       format_char_sequence="ddq"*num_points2D)
+            xys = np.column_stack([tuple(map(float, x_y_id_s[0::3])),
+                                   tuple(map(float, x_y_id_s[1::3]))])
+            point3D_ids = np.array(tuple(map(int, x_y_id_s[2::3])))
+            images[image_id] = Image(
+                id=image_id, qvec=qvec, tvec=tvec,
+                camera_id=camera_id, name=image_name,
+                xys=xys, point3D_ids=point3D_ids)
+    return images
+
+
+
 def read_densecloud_intrinsics(path: str):
     """
     Read the camera model information and crop/resize information of the
@@ -72,8 +153,12 @@ def read_densecloud_intrinsics(path: str):
     #    CAMERA_ID, MODEL, TARGET_WIDTH, TARGET_HEIGHT, INTRINSICS[], CROP_BOX[], SCALE
     #
     # Intrinsics are saved as a list of [fx, fy, cx, cy] values, they correspond to the intrinsics of the cropped and resized images
+    #
     # Crop box is used to crop the original sized images before resizing such that the aspect ratio of the target sizes is preserved given as [left, upper, right, lower] edges
-    # Scale is the float value used to scale the poses to get the resulting pointcloud
+    # a value of all -1's indicates that no cropping will be done
+    #
+    # Scale is the float value used to scale the poses to get the resulting pointcloud.
+    #
     # Number of cameras: 1
     1 PINHOLE 1024 576 535.894435796231 535.894435796231 511.90361445783134 287.90361445783134 0 0 5312 2988
     ```
@@ -95,7 +180,10 @@ def read_densecloud_intrinsics(path: str):
                 width = int(elems[2]) # TODO figure out whether resizing images after reading them in breaks things downstream
                 height = int(elems[3])
                 params = np.array(tuple(map(float, elems[4:8])))
+
                 crop_box = list(map(int, elems[8:12])) # TODO figure out whether this breaks things downstream
+                if crop_box == [-1, -1, -1, -1]:
+                    crop_box = None
                 scale = float(elems[12])
 
                 cameras[camera_id]= Camera(id=camera_id,

@@ -42,12 +42,24 @@ class Scene:
 
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
+
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
+
+        elif os.path.exists(os.path.join(args.source_path, "poses.txt")):
+            print("Found poses.txt, assuming custom dense point clouds are being used with EuRoC format poses!")
+            scene_info = sceneLoadTypeCallbacks["DenseCloud"](args.source_path, args.images, args.eval)
+
+        elif os.path.exists(os.path.join(args.source_path, "colmap_poses.txt")) \
+            or os.path.exists(os.path.join(args.source_path, "colmap_poses.bin")):
+
+            print("Found colmap_poses.txt or colmap_poses.bin, assuming custom dense point clouds are being used with COLMAP format poses!")
+            scene_info = sceneLoadTypeCallbacks["DenseCloudColmap"](args.source_path, args.images, args.eval)
+
         else:
             print("Couldn't recognize either Colmap or Blender data, assuming custom dense point clouds are used as input!")
-            scene_info = sceneLoadTypeCallbacks["DenseCloud"](args.source_path, args.images, args.eval)
+            raise ValueError
 
 
         if not self.loaded_iter:

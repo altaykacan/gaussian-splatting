@@ -23,7 +23,7 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 
-from scene.densecloud_loader import read_densecloud_extrinsics, read_densecloud_intrinsics
+from scene.densecloud_loader import read_densecloud_extrinsics, read_densecloud_extrinsics_colmap, read_densecloud_extrinsics_colmap_binary, read_densecloud_intrinsics
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -299,9 +299,9 @@ def readDenseCloudCameras(cam_extrinsics, cam_intrinsics, images_folder, crop_bo
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
 
-        # TODO add the image cropping and resizing here
+        image = Image.open(image_path)
+
         if crop_box is not None:
-            image = Image.open(image_path)
             image = image.crop(crop_box)
             image = image.resize((width, height))
 
@@ -351,8 +351,53 @@ def readDenseCloudSceneInfo(path, images, eval, llffhold=8):
                            ply_path=ply_path)
     return scene_info
 
+def readDenseCloudSceneInfoColmap(path, images, eval, llffhold=8):
+    """
+    Custom function to read in custom dense pointclouds and
+    corresponding COLMAP poses.
+    """
+
+    cameras_intrinsic_file = os.path.join(path, "intrinsics.txt")
+    cam_intrinsics, crop_box, scale = read_densecloud_intrinsics(cameras_intrinsic_file)
+
+    try:
+        cameras_extrinsic_file = os.path.join(path, "colmap_poses.txt")
+        cam_extrinsics = read_densecloud_extrinsics_colmap(cameras_extrinsic_file, scale)
+        print("Using colmap_poses.txt to extract the camera extrinsics!")
+
+    except:
+        cameras_extrinsic_file = os.path.join(path, "colmap_poses.bin")
+        cam_extrinsics = read_densecloud_extrinsics_colmap_binary(cameras_extrinsic_file, scale)
+        print("Using colmap_poses.bin to extract the camera extrinsics!")
+
+    reading_dir = "images" if images == None else images
+    cam_infos_unsorted = readDenseCloudCameras(cam_extrinsics, cam_intrinsics, reading_dir, crop_box)
+    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
+
+    # TODO decide whether we need this for our purposes
+    if eval:
+        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+    else:
+        train_cam_infos = cam_infos
+        test_cam_infos = []
+
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+
+    # We only have the dense pointcloud as .ply
+    ply_path = os.path.join(path, "cloud.ply")
+    pcd = fetchPly(ply_path)
+
+    scene_info = SceneInfo(point_cloud=pcd,
+                           train_cameras=train_cam_infos,
+                           test_cameras=test_cam_infos,
+                           nerf_normalization=nerf_normalization,
+                           ply_path=ply_path)
+    return scene_info
+
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
     "Blender": readNerfSyntheticInfo,
     "DenseCloud": readDenseCloudSceneInfo,
+    "DenseCloudColmap": readDenseCloudSceneInfoColmap,
 }
