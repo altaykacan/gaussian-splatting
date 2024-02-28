@@ -3,7 +3,7 @@
 # GRAPHDECO research group, https://team.inria.fr/graphdeco
 # All rights reserved.
 #
-# This software is free for non-commercial, research and evaluation use 
+# This software is free for non-commercial, research and evaluation use
 # under the terms of the LICENSE.md file.
 #
 # For inquiries contact  george.drettakis@inria.fr
@@ -255,14 +255,18 @@ def read_extrinsics_text(path):
             if len(line) > 0 and line[0] != "#":
                 elems = line.split()
                 image_id = int(elems[0])
-                qvec = np.array(tuple(map(float, elems[1:5])))
-                tvec = np.array(tuple(map(float, elems[5:8])))
+                qvec = np.array(tuple(map(float, elems[1:5]))) # qw qx qy qz
+                tvec = np.array(tuple(map(float, elems[5:8]))) # tx ty tz
                 camera_id = int(elems[8])
                 image_name = elems[9]
                 elems = fid.readline().split()
-                xys = np.column_stack([tuple(map(float, elems[0::3])),
-                                       tuple(map(float, elems[1::3]))])
-                point3D_ids = np.array(tuple(map(int, elems[2::3])))
+                # xys = np.column_stack([tuple(map(float, elems[0::3])),
+                #                        tuple(map(float, elems[1::3]))])
+                # point3D_ids = np.array(tuple(map(int, elems[2::3])))
+
+                # NOTE: testing to see if removing the xys and the 3D point ids has an influence on the training
+                xys = None
+                point3D_ids = None
                 images[image_id] = Image(
                     id=image_id, qvec=qvec, tvec=tvec,
                     camera_id=camera_id, name=image_name,

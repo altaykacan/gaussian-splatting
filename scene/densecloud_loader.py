@@ -1,0 +1,107 @@
+import numpy as np
+
+from .colmap_loader import CameraModel, Camera, BaseImage, Point3D, CAMERA_MODELS, CAMERA_MODEL_IDS, CAMERA_MODEL_NAMES, Image, rotmat2qvec, qvec2rotmat
+
+def read_densecloud_extrinsics(path: str, scale=1.0):
+    """
+    Reads the extrinsics and associated image data from EuRoC pose files
+    as ORB-SLAM3 provides them and converts the values to the COLMAP format for
+    gaussian splatting to work properly.
+
+    The format of the poses from ORB-SLAM3 are:
+    ```
+    image_id    t_wc(0)     t_wc(1)     t_wc(2)      q_wc(0)     q_wc(1)     q_wc(2)     q_wc(3)
+    ```
+    where the transformations are all given as representing the homogenous
+    transform T_WC (camera to world) matrix. The quaternions are saved as
+    (qx, qy, qz, qw) by ORB-SLAM3.
+
+    COLMAP poses are saved as the T_CW (world to camera) transform and the
+    quaternions are saved in a different order (qw, qx, qy, qz). This function
+    converts everything to as how `read_extrinsics_text` would return.
+    """
+    images = {}
+    camera_id = 1 # we treat only monocular cases
+    with open(path, "r") as fid:
+        while True:
+            line = fid.readline()
+            if not line:
+                break
+            line = line.strip()
+            if len(line) > 0 and line[0] != "#":
+                elems = line.split()
+                image_id = int(float(elems[0])) # convert to float first to get rid of decimal points
+
+                # Read in the quaternions and translation vector for T_WC (camera to world) transform
+                qx, qy, qz, qw = tuple(map(float, elems[4:8]))
+                qvec = np.array([qw, qx, qy, qz])
+
+                tvec = np.array(tuple(map(float, elems[1:4])))
+
+                # Invert the quaternion to get T_CW (world to camera) transform
+                qvec = qvec * np.array([1.0, -1.0, -1.0, -1.0]) # TODO check if the inverse operations are consistent with the rotmat2qvec etc. implementations
+
+                # Need to get the translation vector of the inverse transform
+                R_CW = qvec2rotmat(qvec)
+                tvec = - R_CW @ tvec[:, None] # t_cw = - R_WC.T @ t_wc, where R_WC.T == R_CW
+                tvec = tvec.squeeze() # rest of the code expects (3,) shape
+                tvec = tvec * scale
+
+                # Assuming images are prepended zeros until length 6
+                image_name = f"{image_id:06}.png"
+
+                # These are normally there in the COLMAP images.txt files but we don't need them
+                xys = None
+                point3D_ids = None
+
+                images[image_id] = Image(
+                    id=image_id, qvec=qvec, tvec=tvec,
+                    camera_id=camera_id, name=image_name,
+                    xys=xys, point3D_ids=point3D_ids)
+
+    return images
+
+def read_densecloud_intrinsics(path: str):
+    """
+    Read the camera model information and crop/resize information of the
+    original images.
+
+    The format is expected to be as:
+    ```
+    # Camera list with one line of data per camera, inspired from COLMAP format
+    #    CAMERA_ID, MODEL, TARGET_WIDTH, TARGET_HEIGHT, INTRINSICS[], CROP_BOX[], SCALE
+    #
+    # Intrinsics are saved as a list of [fx, fy, cx, cy] values, they correspond to the intrinsics of the cropped and resized images
+    # Crop box is used to crop the original sized images before resizing such that the aspect ratio of the target sizes is preserved given as [left, upper, right, lower] edges
+    # Scale is the float value used to scale the poses to get the resulting pointcloud
+    # Number of cameras: 1
+    1 PINHOLE 1024 576 535.894435796231 535.894435796231 511.90361445783134 287.90361445783134 0 0 5312 2988
+    ```
+    """
+    cameras = {}
+
+    with open(path, "r") as fid:
+        while True:
+            line = fid.readline()
+            if not line:
+                break
+            line = line.strip()
+
+            if len(line) > 0 and line[0] != "#":
+                elems = line.split()
+                camera_id = int(float(elems[0])) # convert to float first to remove decimals
+                model = elems[1]
+                assert model == "PINHOLE", "While the loader support other types, the rest of the code assumes PINHOLE"
+                width = int(elems[2]) # TODO figure out whether resizing images after reading them in breaks things downstream
+                height = int(elems[3])
+                params = np.array(tuple(map(float, elems[4:8])))
+                crop_box = list(map(int, elems[8:12])) # TODO figure out whether this breaks things downstream
+                scale = float(elems[12])
+
+                cameras[camera_id]= Camera(id=camera_id,
+                                           model=model,
+                                           width=width,
+                                           height=height,
+                                           params=params)
+
+    return cameras, crop_box, scale
