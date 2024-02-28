@@ -58,7 +58,7 @@ class Scene:
             scene_info = sceneLoadTypeCallbacks["DenseCloudColmap"](args.source_path, args.images, args.eval)
 
         else:
-            print("Couldn't recognize either Colmap or Blender data, assuming custom dense point clouds are used as input!")
+            print("Couldn't recognize input file types :(")
             raise ValueError
 
 
