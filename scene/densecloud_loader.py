@@ -61,7 +61,7 @@ def read_densecloud_extrinsics(path: str, scale=1.0):
 
     return images
 
-def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=False):
+def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=True):
     """
     Heavily based off of `read_extrinsics_text` from the original repo.
     The only addition is to use a scaling factor for the translation components

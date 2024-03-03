@@ -131,8 +131,10 @@ class GaussianModel:
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
+        # This is some CUDA compatibility error that messes things up in most remote machines... TODO try other fixes
+        # Issue: https://github.com/graphdeco-inria/gaussian-splatting/issues/99
         dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001) # this is the line that causes memory allocation errors with certain CUDA versions
-        # dist2= torch.tensor(0.0000001) # TODO remove this later, this is for debugging
+
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
