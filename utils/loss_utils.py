@@ -22,7 +22,8 @@ def l1_loss_mask(network_output, gt, mask):
     Custom l1 loss with masking using a boolean tensor. Computes the l1 loss
     for True elements in the mask and computes the mean
     """
-    return torch.sum(torch.abs((network_output - gt)) * mask) / torch.sum(mask)
+    # return torch.sum(torch.abs((network_output - gt)) * mask) / torch.sum(mask)
+    return torch.mean(torch.abs((network_output - gt)) * mask)
 
 def l2_loss(network_output, gt):
     return ((network_output - gt) ** 2).mean()
@@ -98,7 +99,8 @@ def _ssim_mask(img1, img2, mask, window, window_size, channel, size_average=True
 
     if size_average:
         # ssim_map has the same size as img1 and img2 so we can directly use the resized map
-        return torch.sum(ssim_map * mask) / torch.sum(mask)
+        # return torch.sum(ssim_map * mask) / torch.sum(mask)
+        return torch.mean(ssim_map * mask)
     else:
         return ssim_map.mean(1).mean(1).mean(1)
 

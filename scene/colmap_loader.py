@@ -260,13 +260,9 @@ def read_extrinsics_text(path):
                 camera_id = int(elems[8])
                 image_name = elems[9]
                 elems = fid.readline().split()
-                # xys = np.column_stack([tuple(map(float, elems[0::3])),
-                #                        tuple(map(float, elems[1::3]))])
-                # point3D_ids = np.array(tuple(map(int, elems[2::3])))
-
-                # NOTE: testing to see if removing the xys and the 3D point ids has an influence on the training
-                xys = None
-                point3D_ids = None
+                xys = np.column_stack([tuple(map(float, elems[0::3])),
+                                       tuple(map(float, elems[1::3]))])
+                point3D_ids = np.array(tuple(map(int, elems[2::3])))
                 images[image_id] = Image(
                     id=image_id, qvec=qvec, tvec=tvec,
                     camera_id=camera_id, name=image_name,

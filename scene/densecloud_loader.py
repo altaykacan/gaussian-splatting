@@ -18,7 +18,7 @@ def read_densecloud_extrinsics(path: str, scale=1.0):
 
     COLMAP poses are saved as the T_CW (world to camera) transform and the
     quaternions are saved in a different order (qw, qx, qy, qz). This function
-    converts everything to as how `read_extrinsics_text` would return.
+    converts everything to as how `read_extrinsics_text()` would return.
     """
     images = {}
     camera_id = 1 # we treat only monocular cases

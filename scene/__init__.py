@@ -40,25 +40,25 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
 
-        if os.path.exists(os.path.join(args.source_path, "sparse")):
+        if os.path.exists(os.path.join(args.source_path, "sparse")): # loads colmap data if folder "sparse" is there
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
 
-        elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
+        elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")): # loads Blender data if this json is there (useful for NeRF datasets)
             print("Found transforms_train.json file, assuming Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
 
-        elif os.path.exists(os.path.join(args.source_path, "poses.txt")):
+        elif os.path.exists(os.path.join(args.source_path, "poses.txt")): # Custom callback to load dense pointclouds from orb-slam poses with EuRoC format
             print("Found poses.txt, assuming custom dense point clouds are being used with EuRoC format poses!")
             scene_info = sceneLoadTypeCallbacks["DenseCloud"](args.source_path, args.images, args.eval, use_mask=args.use_mask)
 
         elif os.path.exists(os.path.join(args.source_path, "colmap_poses.txt")) \
-            or os.path.exists(os.path.join(args.source_path, "colmap_poses.bin")):
+            or os.path.exists(os.path.join(args.source_path, "colmap_poses.bin")): # Custom callback to load dense pointclouds with colmap poses as text or binary files
 
             print("Found colmap_poses.txt or colmap_poses.bin, assuming custom dense point clouds are being used with COLMAP format poses!")
             scene_info = sceneLoadTypeCallbacks["DenseCloudColmap"](args.source_path, args.images, args.eval, use_mask=args.use_mask)
 
         else:
-            print("Couldn't recognize input file types :(")
+            print(f"Couldn't recognize input file types! Please check your source path: {args.source_path}")
             raise ValueError
 
 
@@ -72,7 +72,7 @@ class Scene:
             if scene_info.train_cameras:
                 camlist.extend(scene_info.train_cameras)
             for id, cam in enumerate(camlist):
-                json_cams.append(camera_to_JSON(id, cam))
+                json_cams.append(camera_to_JSON(id, cam)) # to save cameras.json
             with open(os.path.join(self.model_path, "cameras.json"), 'w') as file:
                 json.dump(json_cams, file)
 
@@ -84,7 +84,7 @@ class Scene:
 
         for resolution_scale in resolution_scales:
             print("Loading Training Cameras")
-            self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args)
+            self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args) # calls loadCam
             print("Loading Test Cameras")
             self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args)
 

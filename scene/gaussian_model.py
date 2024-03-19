@@ -43,8 +43,8 @@ class GaussianModel:
 
     def __init__(self, sh_degree : int):
         self.active_sh_degree = 0
-        self.max_sh_degree = sh_degree
-        self._xyz = torch.empty(0)
+        self.max_sh_degree = sh_degree # degree of the spherical harmonics
+        self._xyz = torch.empty(0) # empty initialization (no dimensions, no data)
         self._features_dc = torch.empty(0)
         self._features_rest = torch.empty(0)
         self._scaling = torch.empty(0)
@@ -393,7 +393,7 @@ class GaussianModel:
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
-        self.densify_and_clone(grads, max_grad, extent)
+        self.densify_and_clone(grads, max_grad, extent) # extent is computed based on how large the scene is
         self.densify_and_split(grads, max_grad, extent)
 
         prune_mask = (self.get_opacity < min_opacity).squeeze()

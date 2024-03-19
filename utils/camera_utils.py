@@ -41,17 +41,18 @@ def loadCam(args, id, cam_info, resolution_scale):
 
     resized_image_rgb = PILtoTorch(cam_info.image, resolution)
 
-    gt_image = resized_image_rgb[:3, ...]
+    gt_image = resized_image_rgb[:3, ...] # only take the first
     loaded_mask = None
 
-    if resized_image_rgb.shape[1] == 4:
+    if resized_image_rgb.shape[1] == 4: # if we have a png with 4 channels we save alpha mask, I think this is a bug [C, H, W] is the shape so we should check index 0 not 1 -altay
         loaded_mask = resized_image_rgb[3:4, ...]
 
     if cam_info.mask is not None:
         mask = cam_info.mask
         mask = torch.from_numpy(mask)
-        mask = mask[None, :, :] # to make it broadcast to [3, H, W] image tensors
         # TODO add code to resize the mask
+    else:
+        mask = None
 
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T,
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY,
