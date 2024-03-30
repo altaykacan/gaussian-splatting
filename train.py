@@ -79,12 +79,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
         # Render
-        if (iteration - 1) == debug_from:
+        if (iteration - 1) == debug_from: # small check to start debugging if debug_from argument is given
             pipe.debug = True
 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg) # TODO maybe can add masking here (cuda) as well -altay
+        render_pkg = render(viewpoint_cam, gaussians, pipe, bg, return_depth=True, return_normal=True, return_opacity=True) # TODO maybe can add masking here (cuda) as well -altay
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         # Loss
@@ -122,8 +122,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold) # Ne
+                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None # this is the maximal screen size
+                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold) # 0.005 is the maximum gradient threshold
 
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
@@ -176,10 +176,29 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                 l1_test = 0.0
                 psnr_test = 0.0
                 for idx, viewpoint in enumerate(config['cameras']):
-                    image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs)["render"], 0.0, 1.0)
+                    # Adding custom tensorboard visualizations to show rendered depth and normal maps
+                    print("Trying to render for training report!")
+                    render_results = renderFunc(viewpoint, scene.gaussians, *renderArgs, return_depth=True, return_normal=True)
+                    print("Rendered for training report!")
+                    # render_results = renderFunc(viewpoint, scene.gaussians, *renderArgs, return_depth=False, return_normal=False)
+
+                    image = torch.clamp(render_results["render"], 0.0, 1.0)
+                    depth = render_results["render_depth"]
+                    normals = render_results["render_normal"]
+
                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
+
                     if tb_writer and (idx < 5):
                         tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
+
+                        print("Trying to save depth to tensorboard")
+                        tb_writer.add_images(config['name'] + "_view_{}/depth".format(viewpoint.image_name), depth[None, None], global_step=iteration) # [None] prepends an empty dimension
+                        print("Saved depth to tensorboard")
+                        print("Trying to save normals to tensorboard")
+                        tb_writer.add_images(config['name'] + "_view_{}/normals".format(viewpoint.image_name), normals[None], global_step=iteration)
+                        print("Saved normals to tensorboard")
+
+
                         if iteration == testing_iterations[0]:
                             tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
                     l1_test += l1_loss(image, gt_image).mean().double()

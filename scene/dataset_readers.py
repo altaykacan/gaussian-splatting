@@ -26,6 +26,8 @@ from scene.gaussian_model import BasicPointCloud
 
 from scene.densecloud_loader import read_densecloud_extrinsics, read_densecloud_extrinsics_colmap, read_densecloud_extrinsics_colmap_binary, read_densecloud_intrinsics
 
+from arguments import ModelParams
+
 class CameraInfo(NamedTuple):
     uid: int
     R: np.array
@@ -158,6 +160,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
     reading_dir = "images" if images == None else images
+    # cam_infos have the rotation matrix's transpose (read_extrinsics functions read the T_CW (world2cam) quaternion)
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
@@ -427,3 +430,31 @@ sceneLoadTypeCallbacks = {
     "DenseCloud": readDenseCloudSceneInfo,
     "DenseCloudColmap": readDenseCloudSceneInfoColmap,
 }
+
+def read_data(args: ModelParams):
+    """
+    Helper method to read in the data using the data reading functions
+    defined in `sceneLoadTypeCallbacks`
+    """
+    if os.path.exists(os.path.join(args.source_path, "sparse")): # loads colmap data if folder "sparse" is there
+        scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
+
+    elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")): # loads Blender data if this json is there (useful for NeRF datasets)
+        print("Found transforms_train.json file, assuming Blender data set!")
+        scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
+
+    elif os.path.exists(os.path.join(args.source_path, "poses.txt")): # Custom callback to load dense pointclouds from orb-slam poses with EuRoC format
+        print("Found poses.txt, assuming custom dense point clouds are being used with EuRoC format poses!")
+        scene_info = sceneLoadTypeCallbacks["DenseCloud"](args.source_path, args.images, args.eval, use_mask=args.use_mask)
+
+    elif os.path.exists(os.path.join(args.source_path, "colmap_poses.txt")) \
+        or os.path.exists(os.path.join(args.source_path, "colmap_poses.bin")): # Custom callback to load dense pointclouds with colmap poses as text or binary files
+
+        print("Found colmap_poses.txt or colmap_poses.bin, assuming custom dense point clouds are being used with COLMAP format poses!")
+        scene_info = sceneLoadTypeCallbacks["DenseCloudColmap"](args.source_path, args.images, args.eval, use_mask=args.use_mask)
+
+    else:
+        print(f"Couldn't recognize input file types! Please check your source path: {args.source_path}")
+        raise ValueError
+
+    return scene_info

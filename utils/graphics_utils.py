@@ -3,7 +3,7 @@
 # GRAPHDECO research group, https://team.inria.fr/graphdeco
 # All rights reserved.
 #
-# This software is free for non-commercial, research and evaluation use 
+# This software is free for non-commercial, research and evaluation use
 # under the terms of the LICENSE.md file.
 #
 # For inquiries contact  george.drettakis@inria.fr
@@ -28,7 +28,7 @@ def geom_transform_points(points, transf_matrix):
     denom = points_out[..., 3:] + 0.0000001
     return (points_out[..., :3] / denom).squeeze(dim=0)
 
-def getWorld2View(R, t):
+def getWorld2View(R, t): # no scaling or translation of the camera center
     Rt = np.zeros((4, 4))
     Rt[:3, :3] = R.transpose()
     Rt[:3, 3] = t
@@ -37,18 +37,18 @@ def getWorld2View(R, t):
 
 def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     Rt = np.zeros((4, 4))
-    Rt[:3, :3] = R.transpose()
+    Rt[:3, :3] = R.transpose() # R is saved as the rotation matrix from C2W for CUDA efficienty reasons, need to invert it to get C2W 4x4 matrix
     Rt[:3, 3] = t
     Rt[3, 3] = 1.0
 
-    C2W = np.linalg.inv(Rt)
-    cam_center = C2W[:3, 3]
+    C2W = np.linalg.inv(Rt) # Rt represents W2C
+    cam_center = C2W[:3, 3] # camera center in world coordinates
     cam_center = (cam_center + translate) * scale
     C2W[:3, 3] = cam_center
     Rt = np.linalg.inv(C2W)
     return np.float32(Rt)
 
-def getProjectionMatrix(znear, zfar, fovX, fovY):
+def getProjectionMatrix(znear, zfar, fovX, fovY): # does perspective projection, converts camera coordinates to to ray coordinates
     tanHalfFovY = math.tan((fovY / 2))
     tanHalfFovX = math.tan((fovX / 2))
 

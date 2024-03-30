@@ -36,7 +36,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree)
-    composite_scene = CompositeScene(dataset, gaussians)
+    # composite_scene = CompositeScene(dataset, gaussians)
     scene = Scene(dataset, gaussians) # changed -altay
     gaussians.training_setup(opt)
     if checkpoint:

@@ -13,7 +13,7 @@ import os
 import random
 import json
 from utils.system_utils import searchForMaxIteration
-from scene.dataset_readers import sceneLoadTypeCallbacks
+from scene.dataset_readers import read_data
 from scene.gaussian_model import GaussianModel
 from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
@@ -22,7 +22,7 @@ class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], scene_info=None, root_scene: bool= False, scene_id: int = -1 ):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], scene_info=None, root_scene: bool = False, scene_id: int = 0):
         """b
         Args:
             scene_info: Information about the scene, contains the pointcloud and
@@ -34,6 +34,8 @@ class Scene:
         self.model_path = args.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
+        self.root_scene = root_scene
+        self.scene_id = scene_id
 
         if load_iteration:
             if load_iteration == -1:
@@ -42,54 +44,60 @@ class Scene:
                 self.loaded_iter = load_iteration
             print("Loading trained model at iteration {}".format(self.loaded_iter))
 
-        self.train_cameras = {}
-        self.test_cameras = {}
+        self.train_cameras = {} # they are dictionaries to hold the different views for different resolution scales
+        self.test_cameras = {} # different from the counterparts in scene_info
 
         # Only read-in data if no initial scene_info is present
         if scene_info is None:
-            scene_info = self.read_data(args)
+            self.scene_info = read_data(args)
 
+        # Modified to save according to the scene id
         if not self.loaded_iter:
-            with open(scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.model_path, f"input_{scene_id}.ply") , 'wb') as dest_file:
+            with open(self.scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.model_path, f"input.ply") , 'wb') as dest_file:
                 dest_file.write(src_file.read())
             json_cams = []
             camlist = []
-            if scene_info.test_cameras:
-                camlist.extend(scene_info.test_cameras)
-            if scene_info.train_cameras:
-                camlist.extend(scene_info.train_cameras)
+            if self.scene_info.test_cameras:
+                camlist.extend(self.scene_info.test_cameras)
+            if self.scene_info.train_cameras:
+                camlist.extend(self.scene_info.train_cameras)
             for id, cam in enumerate(camlist):
-                json_cams.append(camera_to_JSON(id, cam)) # to save cameras.json
-            with open(os.path.join(self.model_path, f"cameras_{scene_id}.json"), 'w') as file:
+                json_cams.append(camera_to_JSON(id, cam)) # to save cameras.json, put into dataset directory to be able to use remote viewer
+            with open(os.path.join(self.model_path, f"cameras.json"), 'w') as file:
                 json.dump(json_cams, file)
 
         # When training we pick a random viewpoint anyways, this shuffling isn't very important
         if shuffle:
-            random.shuffle(scene_info.train_cameras)  # Multi-res consistent random shuffling
-            random.shuffle(scene_info.test_cameras)  # Multi-res consistent random shuffling
+            random.shuffle(self.scene_info.train_cameras)  # Multi-res consistent random shuffling
+            random.shuffle(self.scene_info.test_cameras)  # Multi-res consistent random shuffling
 
-        self.cameras_extent = scene_info.nerf_normalization["radius"]
+        self.cameras_extent = self.scene_info.nerf_normalization["radius"]
 
         # Root scene does not load the train cameras
         if not root_scene:
             for resolution_scale in resolution_scales:
                 print("Loading Training Cameras")
-                self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args) # calls loadCam
+                self.train_cameras[resolution_scale] = cameraList_from_camInfos(self.scene_info.train_cameras, resolution_scale, args) # calls loadCam
                 print("Loading Test Cameras")
-                self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args)
+                self.test_cameras[resolution_scale] = cameraList_from_camInfos(self.scene_info.test_cameras, resolution_scale, args)
 
         # If this Scene is the root scene, we don't want to load any gaussians
-        if self.loaded_iter and not root_scene:
-            self.gaussians.load_ply(os.path.join(self.model_path,
-                                                           "point_cloud",
-                                                           "iteration_" + str(self.loaded_iter),
-                                                           "point_cloud.ply"))
-        else:
-            self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
+        if not root_scene:
+            if self.loaded_iter:
+                self.gaussians.load_ply(os.path.join(self.model_path,
+                                                            "point_cloud",
+                                                            "iteration_" + str(self.loaded_iter),
+                                                            "point_cloud.ply"))
+            else:
+                self.gaussians.create_from_pcd(self.scene_info.point_cloud, self.cameras_extent)
+
+        # No need to keep scene_info in memory if this is not the root scene
+        if not root_scene:
+            del self.scene_info
 
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
-        self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
+        self.gaussians.save_ply(os.path.join(point_cloud_path, f"point_cloud.ply"))
 
     def getTrainCameras(self, scale=1.0):
         return self.train_cameras[scale]
@@ -97,31 +105,4 @@ class Scene:
     def getTestCameras(self, scale=1.0):
         return self.test_cameras[scale]
 
-    def read_data(self, args: ModelParams):
-        """
-        Helper method to read in the data using the data reading functions
-        defined in `sceneLoadTypeCallbacks`
-        """
-        if os.path.exists(os.path.join(args.source_path, "sparse")): # loads colmap data if folder "sparse" is there
-            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
-
-        elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")): # loads Blender data if this json is there (useful for NeRF datasets)
-            print("Found transforms_train.json file, assuming Blender data set!")
-            scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
-
-        elif os.path.exists(os.path.join(args.source_path, "poses.txt")): # Custom callback to load dense pointclouds from orb-slam poses with EuRoC format
-            print("Found poses.txt, assuming custom dense point clouds are being used with EuRoC format poses!")
-            scene_info = sceneLoadTypeCallbacks["DenseCloud"](args.source_path, args.images, args.eval, use_mask=args.use_mask)
-
-        elif os.path.exists(os.path.join(args.source_path, "colmap_poses.txt")) \
-            or os.path.exists(os.path.join(args.source_path, "colmap_poses.bin")): # Custom callback to load dense pointclouds with colmap poses as text or binary files
-
-            print("Found colmap_poses.txt or colmap_poses.bin, assuming custom dense point clouds are being used with COLMAP format poses!")
-            scene_info = sceneLoadTypeCallbacks["DenseCloudColmap"](args.source_path, args.images, args.eval, use_mask=args.use_mask)
-
-        else:
-            print(f"Couldn't recognize input file types! Please check your source path: {args.source_path}")
-            raise ValueError
-
-        return scene_info
 

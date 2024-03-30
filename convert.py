@@ -32,12 +32,15 @@ if not args.skip_matching:
     os.makedirs(args.source_path + "/distorted/sparse", exist_ok=True)
 
     ## Feature extraction
+    print("USING INITIAL GUESSES FOR INTRINSICS")
     feat_extracton_cmd = colmap_command + " feature_extractor "\
         "--database_path " + args.source_path + "/distorted/database.db \
         --image_path " + args.source_path + "/input \
         --ImageReader.single_camera 1 \
         --ImageReader.camera_model " + args.camera + " \
+        --ImageReader.camera_params " + "'541.68, 541.68, 500.93, 296.65'" + " \
         --SiftExtraction.use_gpu " + str(use_gpu)
+    print(feat_extracton_cmd)
     exit_code = os.system(feat_extracton_cmd)
     if exit_code != 0:
         logging.error(f"Feature extraction failed with code {exit_code}. Exiting.")

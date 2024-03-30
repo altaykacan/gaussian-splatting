@@ -5,7 +5,7 @@ timestamp=$(date +"%y%m%d-%H-%M")
 logfile="log-exp3-${timestamp}.txt"
 touch $logfile
 
-# python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_02_1024_576_colmap_opencv --iterations 30000 --save_iterations 1000 5000 10000 20000 -m output/21_baseline_02_opencv || echo "Experiment 21 failed!" >> $logfile && true
+python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_02_1024_576_colmap --iterations 30000 --save_iterations 1000 5000 10000 20000 -m output/36_baseline_02 || echo "Experiment 36 failed!" >> $logfile && true
 
 python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_02_1024_576_dense --images /usr/stud/kaa/storage/user/kaa/data/deepscenario/GX020061_1024_576/images --iterations 30000 --save_iterations 1000 5000 10000 20000 -m output/32_deepscenario_02 || echo "Experiment 32 failed!" >> $logfile && true
 
