@@ -7,3 +7,6 @@
 [submodule "SIBR_viewers"]
 	path = SIBR_viewers
 	url = https://gitlab.inria.fr/sibr/sibr_core.git
+[submodule "submodules/diff-gaussian-rasterization-w-pose"]
+	path = submodules/diff-gaussian-rasterization-w-pose
+	url = https://github.com/altaykacan/diff-gaussian-rasterization-w-pose.git
