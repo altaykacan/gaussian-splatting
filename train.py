@@ -89,7 +89,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
-        if dataset.use_mask: # changed -altay
+        if dataset.use_mask and dataset.use_gt_depth: # changed -altay
+            mask = viewpoint_cam.mask.cuda()
+            gt_depth = viewpoint_cam.gt_depth.cuda()
+            # TODO add the loss computation with the rendered depth
+
+        elif dataset.use_mask: # changed -altay
             mask = viewpoint_cam.mask.cuda()
             Ll1 = l1_loss_mask(image, gt_image, mask=mask)
             loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_mask(image, gt_image, mask=mask))
