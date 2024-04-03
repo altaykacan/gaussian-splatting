@@ -55,6 +55,7 @@ class ModelParams(ParamGroup):
         self.data_device = "cuda"
         self.eval = False
         self.use_mask = False # adding masking flag to remove pixels based off of a precomputed segmentation map to ignore certain pixels
+        self.use_gt_depth = False # adding flag to determine whether depth predictions are used to regularize the training
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):

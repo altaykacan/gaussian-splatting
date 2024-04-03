@@ -83,7 +83,7 @@ def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=True
                 image_id = int(elems[0])
                 qvec = np.array(tuple(map(float, elems[1:5]))) # qw qx qy qz
 
-                tvec = np.array(tuple(map(float, elems[5:8]))) * scale # tx ty tz
+                tvec = np.array(tuple(map(float, elems[5:8]))) * scale # tx ty tz, scaled to match the depth predictions and the pointcloud
 
                 camera_id = int(elems[8])
                 image_name = elems[9]
@@ -157,10 +157,10 @@ def read_densecloud_intrinsics(path: str):
     # Crop box is used to crop the original sized images before resizing such that the aspect ratio of the target sizes is preserved given as [left, upper, right, lower] edges
     # a value of all -1's indicates that no cropping will be done
     #
-    # Scale is the float value used to scale the poses to get the resulting pointcloud.
+    # Scale is the float value used to multiply with the translations to get the resulting pointcloud and to match the predicted depths
     #
     # Number of cameras: 1
-    1 PINHOLE 1024 576 535.894435796231 535.894435796231 511.90361445783134 287.90361445783134 0 0 5312 2988
+    1 PINHOLE 1024 576 535.894435796231 535.894435796231 511.90361445783134 287.90361445783134 0 0 5312 2988 20.0
     ```
     """
     cameras = {}
@@ -184,7 +184,12 @@ def read_densecloud_intrinsics(path: str):
                 crop_box = list(map(int, elems[8:12])) # TODO figure out whether this breaks things downstream
                 if crop_box == [-1, -1, -1, -1]:
                     crop_box = None
-                scale = float(elems[12])
+
+                try:
+                    scale = float(elems[12])
+                except IndexError:
+                    print(f"Scale value cannot be read from {path}, assuming a value of 1.0")
+                    scale = 1.0
 
                 cameras[camera_id]= Camera(id=camera_id,
                                            model=model,
