@@ -54,8 +54,12 @@ class ModelParams(ParamGroup):
         self._white_background = False
         self.data_device = "cuda"
         self.eval = False
-        self.use_mask = False # adding masking flag to remove pixels based off of a precomputed segmentation map to ignore certain pixels
-        self.use_gt_depth = False # adding flag to determine whether depth predictions are used to regularize the training
+        self.use_mask = False # masking flag to remove pixels based off of a precomputed segmentation map to ignore certain pixels
+        self._gt_depth_path = "depths" # path for depths, can use the flag as -g
+        self.use_gt_depth = False # flag to determine whether depth predictions are used to regularize the training
+        self.scale_depths = False # flag to determine whether poses are scaled to the depth predictions (False), or whether the depth predictions are scaled to the poses (True)
+        self.use_log_loss_depth = False # flag to determine whether the logarithm is used instead of the standard L1 loss for the depth regularization term
+        self.use_tv_loss = False # flag to determine whether the total variation loss is used
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
@@ -89,6 +93,10 @@ class OptimizationParams(ParamGroup):
         self.densify_until_iter = 15_000
         self.densify_grad_threshold = 0.0002
         self.random_background = False
+        self.lambda_depth = 0.2 # Factor to multiply the depth regularization term
+        self.lambda_tv = 0.1 # Factor to multiply the total variation loss used to smoothen the depth losses
+        self.max_gt_depth = 50.0 # Maximum depth threshold in approximately meters (depends on the depth prediction/measurement method), depth regularization only computed depth values below this value
+        self.min_gt_depth = 0.0 # Minimum depth threshold in approximately meters
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):

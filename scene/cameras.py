@@ -43,10 +43,14 @@ class Camera(nn.Module):
         # Mask for loss computation
         if mask is not None:
             self.mask = mask.to(self.data_device)
+        else:
+            self.mask = None
 
         # Ground-truth depth for depth regularization
         if gt_depth is not None:
             self.gt_depth = gt_depth.to(self.data_device)
+        else:
+            self.gt_depth = None
 
         if gt_alpha_mask is not None:
             self.original_image *= gt_alpha_mask.to(self.data_device)

@@ -61,7 +61,7 @@ def read_densecloud_extrinsics(path: str, scale=1.0):
 
     return images
 
-def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=True):
+def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=True, scale_depths=False):
     """
     Heavily based off of `read_extrinsics_text` from the original repo.
     The only addition is to use a scaling factor for the translation components
@@ -83,7 +83,11 @@ def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=True
                 image_id = int(elems[0])
                 qvec = np.array(tuple(map(float, elems[1:5]))) # qw qx qy qz
 
-                tvec = np.array(tuple(map(float, elems[5:8]))) * scale # tx ty tz, scaled to match the depth predictions and the pointcloud
+                tvec = np.array(tuple(map(float, elems[5:8]))) # tx ty tz
+
+                # If we do not scale depths we need to scale the poses
+                if not scale_depths:
+                    tvec *= scale # scaled to match the depth predictions and the pointcloud
 
                 camera_id = int(elems[8])
                 image_name = elems[9]
@@ -104,7 +108,7 @@ def read_densecloud_extrinsics_colmap(path: str, scale=1.0, raw_colmap_file=True
     return images
 
 
-def read_densecloud_extrinsics_colmap_binary(path: str, scale=1.0):
+def read_densecloud_extrinsics_colmap_binary(path: str, scale=1.0, scale_depths=False):
     """
     Heavily based off of `read_extrinsics_binary` from the original repo.
     The only addition is to use a scaling factor for the translation components
@@ -119,7 +123,10 @@ def read_densecloud_extrinsics_colmap_binary(path: str, scale=1.0):
             image_id = binary_image_properties[0]
             qvec = np.array(binary_image_properties[1:5])
 
-            tvec = np.array(binary_image_properties[5:8]) * scale
+            tvec = np.array(binary_image_properties[5:8])
+
+            if not scale_depths:
+                tvec = tvec * scale
 
             camera_id = binary_image_properties[8]
             image_name = ""

@@ -14,16 +14,61 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
 
+def total_variation_loss(depth, mask=None):
+    """
+    Computes total variation loss intended to make the depth renderings smoother.
+    Implementation inspired by DN-Splatter:
+    https://github.com/maturk/dn-splatter/blob/main/dn_splatter/losses.py#L269
+
+    Args:
+        depth: torch.Tensor representing the depth renderings of the
+        model of shape (H, W)
+    """
+    if mask is None:
+        mask = torch.ones_like(depth)
+
+    depth = depth * mask
+
+    # These do not have shape [H, W] shape so we mask the depth first
+    h_diff = depth[..., :, :-1] - depth[..., :, 1:] # TODO figure out whether this will propagate to the masked regions or from the masked regions?
+    w_diff = depth[..., :-1, :] - depth[..., 1:, :]
+
+    return torch.mean(torch.abs(h_diff)) + torch.mean(torch.abs(w_diff))
+
+def log_depth_loss(network_output, gt, mask=None):
+    """
+    Loss term for depth regularization using a logarithm
+    around the L1 loss.
+
+    Inspired by DN-Splatter's LogL1 loss:
+    https://github.com/maturk/dn-splatter/blob/main/dn_splatter/losses.py#L161
+    """
+    if mask is None:
+        mask = torch.ones_like(network_output)
+
+    return torch.mean(torch.log(1 + torch.abs(network_output - gt)) * mask)
+
+
+
+
 def l1_loss(network_output, gt):
     return torch.abs((network_output - gt)).mean()
 
 def l1_loss_mask(network_output, gt, mask):
     """
     Custom l1 loss with masking using a boolean tensor. Computes the l1 loss
-    for True elements in the mask and computes the mean
+    for True elements in the mask and computes the mean accross all pixels
+    to equally weight them.
     """
-    # return torch.sum(torch.abs((network_output - gt)) * mask) / torch.sum(mask)
+    # mask = torch.logical_not(mask)
+
+    # # If gt is an rgb image with 3 channels, we need to expand our binary mask to match it
+    # if len(gt.shape) == 3 and len(mask.shape) == 2:
+    #     mask = mask[None, :, :].expand(3, -1, -1)
+
+    # gt[mask] = network_output.detach()[mask]
     return torch.mean(torch.abs((network_output - gt)) * mask)
+    # return torch.abs((network_output - gt)).mean()
 
 def l2_loss(network_output, gt):
     return ((network_output - gt) ** 2).mean()
@@ -74,6 +119,15 @@ def ssim_mask(img1, img2, mask, window_size=11, size_average=True):
     channel = img1.size(-3)
     window = create_window(window_size, channel)
 
+    # # mask has the pixels True where we should compute the loss
+    # mask = torch.logical_not(mask)
+
+    # # If gt is an rgb image with 3 channels, we need to expand our binary mask to match it
+    # if len(img2.shape) == 3 and len(mask.shape) == 2:
+    #     mask = mask[None, :, :].expand(3, -1, -1)
+
+    # img2[mask] = img1.detach()[mask] #trying alternative strategy for masking, replacing gt with prediction
+
     if img1.is_cuda:
         window = window.cuda(img1.get_device())
     window = window.type_as(img1)
@@ -101,6 +155,7 @@ def _ssim_mask(img1, img2, mask, window, window_size, channel, size_average=True
         # ssim_map has the same size as img1 and img2 so we can directly use the resized map
         # return torch.sum(ssim_map * mask) / torch.sum(mask)
         return torch.mean(ssim_map * mask)
+        # return torch.mean(ssim_map)
     else:
         return ssim_map.mean(1).mean(1).mean(1)
 

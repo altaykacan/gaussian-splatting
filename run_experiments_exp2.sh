@@ -15,9 +15,9 @@ python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_01_1
 
 python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_01_1024_576_dense_skybox_sfm --images /usr/stud/kaa/storage/user/kaa/data/deepscenario/GX010061_1024_576/images --iterations 30000 --save_iterations 1000 5000 10000 20000 -m output/25_dense_skybox_sfm || echo "Experiment 25 failed!" >> $logfile && true
 
-python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_01_1024_576_dense_skydome   --images /usr/stud/kaa/storage/user/kaa/data/deepscenario/GX010061_1024_576/images --iterations 30000 --save_iterations 1000 5000 10000 20000 -m output/26_dense_skydome || echo "Experiment 26 failed!" >> $logfile && true
+python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_01_1024_576_dense_skydome   --images /usr/stud/kaa/storage/user/kaa/data/deepscenario/GX010061_1024_576/images --iterations 30000 --save_iterations 1000 5000 10000 20000 --test_iterations 1 1000 7000 15000 30000 -m output/26_dense_skydome || echo "Experiment 26 failed!" >> $logfile && true
 
-python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_01_1024_576_dense_skydome_sfm   --images /usr/stud/kaa/storage/user/kaa/data/deepscenario/GX010061_1024_576/images --iterations 30000 --save_iterations 1000 5000 10000 20000 -m output/27_dense_skydome_sfm || echo "Experiment 27 failed!" >> $logfile && true
+python train.py --source_path /usr/stud/kaa/data/splats/custom/deepscenario_01_1024_576_dense_skydome_sfm   --images /usr/stud/kaa/storage/user/kaa/data/deepscenario/GX010061_1024_576/images --iterations 30000 --save_iterations 1000 5000 10000 20000 -m output/27_dense_skydome_sfm --test_iterations 1 1000 7000 15000 30000 || echo "Experiment 27 failed!" >> $logfile && true
 
 python train.py --source_path /usr/stud/kaa/data/splats/custom/munich_01_1024_576_colmap  --iterations 30000 --save_iterations 1000 5000 10000 20000 -m output/28_munich_01_baseline || echo "Experiment 28 failed!" >> $logfile && true
 

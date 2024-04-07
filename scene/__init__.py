@@ -40,6 +40,11 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
 
+        if args.scale_depths:
+            print("The flag --scale_depths is given, assuming the pointcloud has been scaled to match the scale of the poses or has the same scale. Depth predictions will be scaled if using depth regularization.")
+        else:
+            print("The flag --scale_depths is not given, scaling the poses to match depth predictions and point cloud coordinates.")
+
         if os.path.exists(os.path.join(args.source_path, "sparse")): # loads colmap data if folder "sparse" is there
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
 
@@ -55,12 +60,13 @@ class Scene:
             or os.path.exists(os.path.join(args.source_path, "colmap_poses.bin")): # Custom callback to load dense pointclouds with colmap poses as text or binary files
 
             print("Found colmap_poses.txt or colmap_poses.bin, assuming custom dense point clouds are being used with COLMAP format poses!")
-            scene_info = sceneLoadTypeCallbacks["DenseCloudColmap"](args.source_path, args.images, args.eval, use_mask=args.use_mask, use_gt_depth=args.use_gt_depth)
+            scene_info = sceneLoadTypeCallbacks["DenseCloudColmap"](args.source_path, args.images, args.eval, use_mask=args.use_mask, use_gt_depth=args.use_gt_depth, gt_depth_path=args.gt_depth_path, scale_depths=args.scale_depths)
 
         else:
             print(f"Couldn't recognize input file types! Please check your source path: {args.source_path}")
             raise ValueError
 
+        self.scene_scale = scene_info.scene_scale
 
         if not self.loaded_iter:
             with open(scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.model_path, "input.ply") , 'wb') as dest_file:

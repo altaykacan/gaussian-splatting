@@ -46,6 +46,7 @@ class SceneInfo(NamedTuple):
     test_cameras: list
     nerf_normalization: dict
     ply_path: str
+    scene_scale: float
 
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):
@@ -265,14 +266,16 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
     except:
         pcd = None
 
-    scene_info = SceneInfo(point_cloud=pcd,
-                           train_cameras=train_cam_infos,
-                           test_cameras=test_cam_infos,
-                           nerf_normalization=nerf_normalization,
-                           ply_path=ply_path)
+    scene_info = SceneInfo(
+        point_cloud=pcd,
+        train_cameras=train_cam_infos,
+        test_cameras=test_cam_infos,
+        nerf_normalization=nerf_normalization,
+        ply_path=ply_path
+        )
     return scene_info
 
-def readDenseCloudCameras(cam_extrinsics, cam_intrinsics, images_folder, crop_box=None, use_mask=False, use_gt_depth=False):
+def readDenseCloudCameras(cam_extrinsics, cam_intrinsics, images_folder, crop_box=None, use_mask=False, use_gt_depth=False, gt_depth_path=None, scale_depths=False, scale=1.0):
     """
     A modified version of `readColmapCameras()` that does image preprocessing
     if necessary. This is useful when working with dense pointclouds where we
@@ -289,7 +292,7 @@ def readDenseCloudCameras(cam_extrinsics, cam_intrinsics, images_folder, crop_bo
     |   |   |- <mask 0> # as .png files
     |   |   |- <mask 1>
     |   |   |- ...
-    |   |- depths
+    |   |- <gt_depth_path> # `/.../depths` by default
     |   |   |- <depth 0> # as .npy files
     |   |   |- <depth 1>
     |   |   |- ...
@@ -307,8 +310,6 @@ def readDenseCloudCameras(cam_extrinsics, cam_intrinsics, images_folder, crop_bo
         intr = cam_intrinsics[extr.camera_id]
         height = intr.height
         width = intr.width
-
-        scale = intr["scale"]
 
         uid = intr.id
         R = np.transpose(qvec2rotmat(extr.qvec)) # why do we take the transpose? -altay
@@ -349,10 +350,19 @@ def readDenseCloudCameras(cam_extrinsics, cam_intrinsics, images_folder, crop_bo
         if use_gt_depth:
             image_stem, extension = extr.name.split(".")
 
-            # Depths directory is expected to be in the same root directory as the images folder
-            depth_folder = os.path.join(os.path.dirname(images_folder), "depths")
+            if gt_depth_path == "depths":
+                depth_folder = os.path.join(os.path.dirname(images_folder), "depths")
+            else:
+                depth_folder = gt_depth_path
+
             depth_path = os.path.join(depth_folder, image_stem + ".npy") # saving as numpy arrays
             depth = np.load(depth_path)
+
+            # If we do not multiply the poses with the scale, we need to divide the depths by it
+            if scale_depths:
+                depth = depth / scale
+        else:
+            depth = None
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height, mask=mask, gt_depth=depth)
@@ -401,21 +411,23 @@ def readDenseCloudSceneInfo(path, images, eval, llffhold=8, use_mask=False, use_
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
                            nerf_normalization=nerf_normalization,
-                           ply_path=ply_path)
+                           ply_path=ply_path,
+                           scene_scale=scale
+                           )
     return scene_info
 
-def readDenseCloudSceneInfoColmap(path, images, eval, llffhold=8, use_mask=False, use_gt_depth=False):
+def readDenseCloudSceneInfoColmap(path, images, eval, llffhold=8, use_mask=False, use_gt_depth=False, gt_depth_path=None, scale_depths=False):
     """
     Custom function to read in custom dense pointclouds and
     corresponding COLMAP poses.
     """
 
     cameras_intrinsic_file = os.path.join(path, "intrinsics.txt")
-    cam_intrinsics, crop_box, scale= read_densecloud_intrinsics(cameras_intrinsic_file)
+    cam_intrinsics, crop_box, scale = read_densecloud_intrinsics(cameras_intrinsic_file)
 
     try:
         cameras_extrinsic_file = os.path.join(path, "colmap_poses.txt")
-        cam_extrinsics = read_densecloud_extrinsics_colmap(cameras_extrinsic_file, scale)
+        cam_extrinsics = read_densecloud_extrinsics_colmap(cameras_extrinsic_file, scale, scale_depths=scale_depths)
         print("Using colmap_poses.txt to extract the camera extrinsics!")
 
     except:
@@ -424,7 +436,24 @@ def readDenseCloudSceneInfoColmap(path, images, eval, llffhold=8, use_mask=False
         print("Using colmap_poses.bin to extract the camera extrinsics!")
 
     reading_dir = "images" if images == None else images
-    cam_infos_unsorted = readDenseCloudCameras(cam_extrinsics, cam_intrinsics, reading_dir, crop_box, use_mask, use_gt_depth)
+
+    if gt_depth_path is not None:
+        print(f"Reading images from {gt_depth_path}...")
+    else:
+        print("No depth path specified, looking for folder 'depths' in the parent directory of the image folder...")
+
+    cam_infos_unsorted = readDenseCloudCameras(
+        cam_extrinsics,
+        cam_intrinsics,
+        reading_dir,
+        crop_box,
+        use_mask,
+        use_gt_depth,
+        gt_depth_path,
+        scale_depths,
+        scale,
+        )
+
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
     if use_mask:
@@ -444,11 +473,14 @@ def readDenseCloudSceneInfoColmap(path, images, eval, llffhold=8, use_mask=False
     ply_path = os.path.join(path, "cloud.ply")
     pcd = fetchPly(ply_path)
 
-    scene_info = SceneInfo(point_cloud=pcd,
-                           train_cameras=train_cam_infos,
-                           test_cameras=test_cam_infos,
-                           nerf_normalization=nerf_normalization,
-                           ply_path=ply_path)
+    scene_info = SceneInfo(
+        point_cloud=pcd,
+        train_cameras=train_cam_infos,
+        test_cameras=test_cam_infos,
+        nerf_normalization=nerf_normalization,
+        ply_path=ply_path,
+        scene_scale=scale,
+        )
     return scene_info
 
 sceneLoadTypeCallbacks = {
