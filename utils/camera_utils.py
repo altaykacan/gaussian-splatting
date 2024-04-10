@@ -50,21 +50,29 @@ def loadCam(args, id, cam_info, resolution_scale):
     if cam_info.mask is not None:
         mask = cam_info.mask
         mask = torch.from_numpy(mask)
-        # TODO add code to resize the mask
+        # TODO add code to resize/adjust the mask
     else:
         mask = None
 
     if cam_info.gt_depth is not None:
         gt_depth = cam_info.gt_depth
         gt_depth = torch.from_numpy(gt_depth)
-        # TODO add code to resize/adjust the mask
+        # TODO add code to resize/adjust the depth
     else:
         gt_depth = None
+
+    if cam_info.gt_normal is not None:
+        gt_normal = cam_info.gt_normal
+        gt_normal = torch.from_numpy(gt_normal)
+        # TODO add code to resize/adjust the normal maps, make sure that the values are normalized
+    else:
+        gt_normal = None
 
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T,
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY,
                   image=gt_image, gt_alpha_mask=loaded_mask,
-                  image_name=cam_info.image_name, uid=id, data_device=args.data_device, mask=mask, gt_depth=gt_depth)
+                  image_name=cam_info.image_name, uid=id, data_device=args.data_device,
+                  mask=mask, gt_depth=gt_depth, gt_normal=gt_normal)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
