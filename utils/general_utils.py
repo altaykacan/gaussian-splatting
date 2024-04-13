@@ -131,3 +131,95 @@ def safe_state(silent):
     np.random.seed(0)
     torch.manual_seed(0)
     torch.cuda.set_device(torch.device("cuda:0"))
+
+
+def rotate_vector_to_vector(v1: torch.Tensor, v2: torch.Tensor):
+
+    """
+    Returns a rotation matrix that rotates v1 to align with v2.
+
+    Code taken from DN-Splatter: https://github.com/maturk/dn-splatter/blob/925d985ecb64c6544ecde936de5e8a0dd06e5399/dn_splatter/dn_model.py#L1591
+
+    """
+    assert v1.dim() == v2.dim()
+    assert v1.shape[-1] == 3
+    if v1.dim() == 1:
+        v1 = v1[None, ...]
+        v2 = v2[None, ...]
+    N = v1.shape[0]
+
+    u = v1 / torch.norm(v1, dim=-1, keepdim=True)
+    Ru = v2 / torch.norm(v2, dim=-1, keepdim=True)
+    I = torch.eye(3, 3, device=v1.device).unsqueeze(0).repeat(N, 1, 1)
+
+    # the cos angle between the vectors
+    c = torch.bmm(u.view(N, 1, 3), Ru.view(N, 3, 1)).squeeze(-1)
+
+    eps = 1.0e-10
+    # the cross product matrix of a vector to rotate around
+    K = torch.bmm(Ru.unsqueeze(2), u.unsqueeze(1)) - torch.bmm(
+        u.unsqueeze(2), Ru.unsqueeze(1)
+    )
+    # Rodrigues' formula
+    ans = I + K + (K @ K) / (1 + c)[..., None]
+    same_direction_mask = torch.abs(c - 1.0) < eps
+    same_direction_mask = same_direction_mask.squeeze(-1)
+    opposite_direction_mask = torch.abs(c + 1.0) < eps
+    opposite_direction_mask = opposite_direction_mask.squeeze(-1)
+    ans[same_direction_mask] = torch.eye(3, device=v1.device)
+    ans[opposite_direction_mask] = -torch.eye(3, device=v1.device)
+    return ans
+
+
+
+def matrix_to_quaternion(rotation_matrix: torch.Tensor):
+    """
+    Convert a 3x3 rotation matrix to a unit quaternion.
+
+    Code taken from DN-Splatter: https://github.com/maturk/dn-splatter/blob/925d985ecb64c6544ecde936de5e8a0dd06e5399/dn_splatter/dn_model.py#L1624C1-L1671C22
+
+    Also see: https://en.wikipedia.org/wiki/Rotation_matrix#Quaternion
+    """
+    if rotation_matrix.dim() == 2:
+        rotation_matrix = rotation_matrix[None, ...]
+    assert rotation_matrix.shape[1:] == (3, 3)
+
+    traces = torch.vmap(torch.trace)(rotation_matrix)
+    quaternion = torch.zeros(
+        rotation_matrix.shape[0],
+        4,
+        dtype=rotation_matrix.dtype,
+        device=rotation_matrix.device,
+    )
+    for i in range(rotation_matrix.shape[0]):
+        matrix = rotation_matrix[i]
+        trace = traces[i]
+        if trace > 0:
+            S = torch.sqrt(trace + 1.0) * 2
+            w = 0.25 * S
+            x = (matrix[2, 1] - matrix[1, 2]) / S
+            y = (matrix[0, 2] - matrix[2, 0]) / S
+            z = (matrix[1, 0] - matrix[0, 1]) / S
+        elif (matrix[0, 0] > matrix[1, 1]) and (matrix[0, 0] > matrix[2, 2]):
+            S = torch.sqrt(1.0 + matrix[0, 0] - matrix[1, 1] - matrix[2, 2]) * 2
+            w = (matrix[2, 1] - matrix[1, 2]) / S
+            x = 0.25 * S
+            y = (matrix[0, 1] + matrix[1, 0]) / S
+            z = (matrix[0, 2] + matrix[2, 0]) / S
+        elif matrix[1, 1] > matrix[2, 2]:
+            S = torch.sqrt(1.0 + matrix[1, 1] - matrix[0, 0] - matrix[2, 2]) * 2
+            w = (matrix[0, 2] - matrix[2, 0]) / S
+            x = (matrix[0, 1] + matrix[1, 0]) / S
+            y = 0.25 * S
+            z = (matrix[1, 2] + matrix[2, 1]) / S
+        else:
+            S = torch.sqrt(1.0 + matrix[2, 2] - matrix[0, 0] - matrix[1, 1]) * 2
+            w = (matrix[1, 0] - matrix[0, 1]) / S
+            x = (matrix[0, 2] + matrix[2, 0]) / S
+            y = (matrix[1, 2] + matrix[2, 1]) / S
+            z = 0.25 * S
+
+        quaternion[i] = torch.tensor(
+            [w, x, y, z], dtype=matrix.dtype, device=matrix.device
+        )
+    return quaternion

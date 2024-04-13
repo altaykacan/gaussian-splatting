@@ -11,6 +11,7 @@
 
 import torch
 import numpy as np
+from tqdm import tqdm
 from utils.general_utils import inverse_sigmoid, get_expon_lr_func, build_rotation
 from torch import nn
 import os
@@ -19,7 +20,9 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
 from utils.graphics_utils import BasicPointCloud
-from utils.general_utils import strip_symmetric, build_scaling_rotation
+from utils.general_utils import strip_symmetric, build_scaling_rotation, rotate_vector_to_vector
+
+from scipy.spatial.transform import Rotation
 
 class GaussianModel:
 
@@ -121,7 +124,7 @@ class GaussianModel:
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
-    def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
+    def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float, init_from_normals: bool=False):
         self.spatial_lr_scale = spatial_lr_scale
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
@@ -129,14 +132,40 @@ class GaussianModel:
         features[:, :3, 0 ] = fused_color
         features[:, 3:, 1:] = 0.0
 
-        print("Number of points at initialisation : ", fused_point_cloud.shape[0])
+        num_points = fused_point_cloud.shape[0]
+        print("Number of points at initialisation : ", num_points)
 
         # Issue: https://github.com/graphdeco-inria/gaussian-splatting/issues/99
         dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001) # this is the line that causes memory allocation errors with certain CUDA versions
 
-        scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
-        rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
-        rots[:, 0] = 1
+        scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3) # log is the parametrization for scales, the scale_activation undoes that
+
+        # Code heavily inspired from DN-splatter's DNSplatterModel.populate_modules() method
+        if init_from_normals:
+            print("Initializing normals,  this might take some time...")
+            normals = torch.tensor(pcd.normals).float().cuda()
+
+            assert torch.not_equal(normals, torch.zeros_like(normals)).all(), "The initial pointcloud does not contain normal information or it was not possible to read them, please check it!"
+
+            scales[:, 2] = torch.log((dist2 / 10)) # initializing the scale to be smaller in z-direction (scales are saved in log scale) # TODO what happens if we make the scale very small?
+            z_vector = torch.tensor([0, 0, 1], dtype=torch.float).repeat(num_points, 1).cuda()
+
+            # This a rotation that rotates the z vectors in object frame to match the normal directions of each gaussian in world frame
+            rotation_matrix = rotate_vector_to_vector(z_vector, normals) # [num_points, 3, 3]
+            rotation_matrix = rotation_matrix.cpu() # scipy needs numpy arrays, need to put on cpu
+            quats = Rotation.from_matrix(rotation_matrix).as_quat() # [num_points, 4]
+
+            quats = torch.from_numpy(quats).float().cuda() # bring back to gpu and convert to float
+
+            # Scipy uses [x,y,z,w] format but we need [w,x,y,z]
+            rots = torch.cat((quats[:, 3:], quats[:,0:3]), dim=1)
+
+            print("Initialized normals!")
+
+        else:
+            print("Initial noramls are not provided, settings them all to a constant value")
+            rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
+            rots[:, 0] = 1
 
         opacities = inverse_sigmoid(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
 

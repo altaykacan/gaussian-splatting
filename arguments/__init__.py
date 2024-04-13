@@ -71,6 +71,7 @@ class ModelParams(ParamGroup):
         self.use_gt_normal = False  # flag to determine whether normal predictions/estimates are used to regularize the training
         self.use_tv_loss_normal = False  # flag to determine whether the total variation loss is used for the normals
         self.gt_normal_path = "normals"  # path for normals, default looks for "normals" in the parent directory of image directory
+        self.init_from_normals = False # flag to determine whether the 3D gaussians are initialized from normal values stored in the initial pointcloud
 
         super().__init__(parser, "Loading Parameters", sentinel)
 
