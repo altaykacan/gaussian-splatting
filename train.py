@@ -18,6 +18,7 @@ from utils.loss_utils import (
     ssim_mask,
     total_variation_loss,
     log_depth_loss,
+    constant_opacity_loss,
 )
 from gaussian_renderer import render, network_gui
 import sys
@@ -241,11 +242,26 @@ def training(
             normal_loss = torch.Tensor([0.0]).cuda()
             tv_loss_normal = torch.Tensor([0.0]).cuda()
 
+        # Entropy regularization
+        # TODO implement, visibility_filter is a [num_points] boolean torch tensor that gives you which gaussians are visible in an image
+        # We can use that to index the opacities and compute an entropy loss for all of the visible gaussians for a given frame
+        # probably it makes sense to do this after some iterations have been done
+
+        # Constant opacity term
+        if dataset.use_constant_opacity_loss:
+            opacities = gaussians.get_opacity()[visibility_filter]
+            target_opacity = opt.constant_opacity_value
+
+            opacity_loss = constant_opacity_loss(opacities, target_opacity)
+        else:
+            opacity_loss = torch.Tensor([0.0]).cuda()
+
         loss = (
             (1.0 - opt.lambda_dssim) * Ll1
             + opt.lambda_dssim * ssim_loss
             + opt.lambda_depth * (depth_loss + opt.lambda_tv_depth * tv_loss_depth)
             + opt.lambda_normal * (normal_loss + opt.lambda_tv_normal * tv_loss_normal)
+            + opt.lambda_opacity * opacity_loss
         )
         loss.backward()
 
@@ -278,6 +294,7 @@ def training(
                 tv_loss_depth=tv_loss_depth,
                 normal_loss=normal_loss,
                 tv_loss_normal=tv_loss_normal,
+                opacity_loss=opacity_loss,
                 opt=opt,
             )
             if iteration in saving_iterations:
@@ -303,7 +320,7 @@ def training(
                     )
                     gaussians.densify_and_prune(
                         opt.densify_grad_threshold,
-                        0.005,
+                        opt.minimum_opacity,
                         scene.cameras_extent,
                         size_threshold,
                     )
@@ -364,6 +381,7 @@ def training_report(
     tv_loss_depth=None,
     normal_loss=None,
     tv_loss_normal=None,
+    opacity_loss=None,
     opt=None,
 ):
     if tb_writer:
@@ -382,6 +400,10 @@ def training_report(
         )
         tb_writer.add_scalar(
             "train_loss_patches/tv_loss_normal", tv_loss_normal.item(), iteration
+        )
+
+        tb_writer.add_scalar(
+            "train_loss_patches/constant_opacity_loss", opacity_loss.item(), iteration
         )
 
     # Report test and samples of training set

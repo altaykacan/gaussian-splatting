@@ -147,7 +147,7 @@ class GaussianModel:
 
             assert torch.not_equal(normals, torch.zeros_like(normals)).all(), "The initial pointcloud does not contain normal information or it was not possible to read them, please check it!"
 
-            scales[:, 2] = torch.log((dist2 / 10)) # initializing the scale to be smaller in z-direction (scales are saved in log scale) # TODO what happens if we make the scale very small?
+            scales[:, 2] = torch.log((dist2 / 10)) # initializing the scale to be smaller in z-direction (scales are saved in log scale)
             z_vector = torch.tensor([0, 0, 1], dtype=torch.float).repeat(num_points, 1).cuda()
 
             # This a rotation that rotates the z vectors in object frame to match the normal directions of each gaussian in world frame
@@ -163,7 +163,7 @@ class GaussianModel:
             print("Initialized normals!")
 
         else:
-            print("Initial noramls are not provided, settings them all to a constant value")
+            print("Initial normals are not provided, settings them all to a constant value")
             rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
             rots[:, 0] = 1
 
@@ -421,13 +421,13 @@ class GaussianModel:
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
-        self.densify_and_clone(grads, max_grad, extent) # extent is computed based on how large the scene is
+        self.densify_and_clone(grads, max_grad, extent) # extent is computed based on how much space the camera trajectories span
         self.densify_and_split(grads, max_grad, extent)
 
         prune_mask = (self.get_opacity < min_opacity).squeeze()
         if max_screen_size:
-            big_points_vs = self.max_radii2D > max_screen_size
-            big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
+            big_points_vs = self.max_radii2D > max_screen_size # big gaussians in viewspace
+            big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent # big gaussians in worldspace
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
         self.prune_points(prune_mask)
 

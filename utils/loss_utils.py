@@ -14,15 +14,23 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
 
-def total_variation_loss(depth, mask=None):
+def constant_opacity_loss(opacities: torch.Tensor, target: float):
+    # TODO can we mask this in a meaningful way? The opacities is an unordered list of the gaussian opacities
+    return torch.mean(torch.abs(opacities - target))
+
+
+
+def total_variation_loss(depth: torch.Tesor, mask: torch.Tensor=None):
     """
     Computes total variation loss intended to make the depth renderings smoother.
     Implementation inspired by DN-Splatter:
     https://github.com/maturk/dn-splatter/blob/main/dn_splatter/losses.py#L269
 
     Args:
-        depth: torch.Tensor representing the depth renderings of the
-        model of shape (H, W)
+        depth: Tensor representing the depth renderings of the
+               model of shape (H, W)
+        mask: Boolean tensor with shape (H,W), has True values for where the loss
+              should be computed at
     """
     if mask is None:
         mask = torch.ones_like(depth)

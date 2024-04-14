@@ -72,6 +72,8 @@ class ModelParams(ParamGroup):
         self.use_tv_loss_normal = False  # flag to determine whether the total variation loss is used for the normals
         self.gt_normal_path = "normals"  # path for normals, default looks for "normals" in the parent directory of image directory
         self.init_from_normals = False # flag to determine whether the 3D gaussians are initialized from normal values stored in the initial pointcloud
+        self.use_constant_opacity_loss = False # flag to whether use an additional loss term to guide the gaussian opacities to be the same as `constant_opacity_value` as below
+        self.use_entropy_regularization = True # flag to whether use an entropy regularization term for the loss that pushes opacities of visible gaussians to either 0 or 1 (binary distribution)
 
         super().__init__(parser, "Loading Parameters", sentinel)
 
@@ -110,10 +112,14 @@ class OptimizationParams(ParamGroup):
         self.random_background = False
         self.lambda_depth = 0.2  # Factor to multiply the depth regularization term
         self.lambda_tv_depth = 0.1  # Factor to multiply the total variation loss used to smoothen the depth losses
-        self.lambda_normal = 0.1  # Factor to multiply the normal regularization term
+        self.lambda_normal = 0.2  # Factor to multiply the normal regularization term
         self.lambda_tv_normal = 0.1  # Factor to multiply the total variation loss used to smoothen the normal losses
-        self.max_gt_depth = 50.0  # Maximum depth threshold in approximately meters (depends on the depth prediction/measurement method), depth regularization only computed depth values below this value
-        self.min_gt_depth = 0.0  # Minimum depth threshold in approximately meters
+        self.max_gt_depth = 50.0  # Maximum groundtruth depth threshold for depth and normal regularization, ignored when `use_inverse_depth` is true
+        self.min_gt_depth = 0.0  # Minimum groundtruth depth threshold for depth and normal regularization, ignored when `use_inverse_depth` is true
+        self.lambda_opacity = 0.2 # Factor used to multiply the constant opacity loss term
+        self.lambda_entropy = 0.2 # Factor to multiply the entropy regularization term for the visible gaussian opacities
+        self.minimum_opacity = 0.005 # minimum opacity value permitted that is used in pruning of gaussians
+        self.constant_opacity_value = 1.0 # the value used for `use_constant_opacity_loss`
         super().__init__(parser, "Optimization Parameters")
 
 
