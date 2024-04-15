@@ -23,6 +23,7 @@ parser.add_argument("--camera", default="OPENCV", type=str)
 parser.add_argument("--colmap_executable", default="", type=str)
 parser.add_argument("--resize", action="store_true")
 parser.add_argument("--magick_executable", default="", type=str)
+parser.add_argument("--strict_bundle_adjustment", action="store_true")
 args = parser.parse_args()
 colmap_command = '"{}"'.format(args.colmap_executable) if len(args.colmap_executable) > 0 else "colmap"
 magick_command = '"{}"'.format(args.magick_executable) if len(args.magick_executable) > 0 else "magick"
@@ -32,11 +33,13 @@ if not args.skip_matching:
     os.makedirs(args.source_path + "/distorted/sparse", exist_ok=True)
 
     ## Feature extraction
+    print("USING INITIAL GUESSES FOR INTRINSICS")
     feat_extracton_cmd = colmap_command + " feature_extractor "\
         "--database_path " + args.source_path + "/distorted/database.db \
         --image_path " + args.source_path + "/input \
         --ImageReader.single_camera 1 \
         --ImageReader.camera_model " + args.camera + " \
+        --ImageReader.camera_params " + "'540.60, 512, 288'" + " \
         --SiftExtraction.use_gpu " + str(use_gpu)
     exit_code = os.system(feat_extracton_cmd)
     if exit_code != 0:
@@ -55,11 +58,28 @@ if not args.skip_matching:
     ### Bundle adjustment
     # The default Mapper tolerance is unnecessarily large,
     # decreasing it speeds up bundle adjustment steps.
+    # if args.strict_bundle_adjustment:
+    #     print("Using strict matching settings for bundle adjustment!")
+    #     mapper_cmd = (colmap_command + " mapper \
+    #         --database_path " + args.source_path + "/distorted/database.db \
+    #         --image_path "  + args.source_path + "/input \
+    #         --output_path "  + args.source_path + "/distorted/sparse \
+    #         --Mapper.min_num_matches 20 \
+    #         --Mapper.abs_pose_min_num_inliers 35 \
+    #         --Mapper.abs_pose_min_inlier_ratio 0.25 \
+    #         --Mapper.ba_global_function_tolerance=0.000001")
+    # else:
+    #     print("Using default 3DGS settings for bundle adjustment")
+    #     mapper_cmd = (colmap_command + " mapper \
+    #         --database_path " + args.source_path + "/distorted/database.db \
+    #         --image_path "  + args.source_path + "/input \
+    #         --output_path "  + args.source_path + "/distorted/sparse \
+    #         --Mapper.ba_global_function_tolerance=0.000001")
+    print("Using default 3DGS settings for bundle adjustment, with default bundle adjustment tolerance")
     mapper_cmd = (colmap_command + " mapper \
         --database_path " + args.source_path + "/distorted/database.db \
         --image_path "  + args.source_path + "/input \
-        --output_path "  + args.source_path + "/distorted/sparse \
-        --Mapper.ba_global_function_tolerance=0.000001")
+        --output_path "  + args.source_path + "/distorted/sparse")
     exit_code = os.system(mapper_cmd)
     if exit_code != 0:
         logging.error(f"Mapper failed with code {exit_code}. Exiting.")

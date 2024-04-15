@@ -158,7 +158,7 @@ class Scene:
                 )
             )
         else:
-            self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent, args.init_from_normals)
+            self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent, args.init_from_normals, args.init_opacity)
 
     def save(self, iteration):
         point_cloud_path = os.path.join(

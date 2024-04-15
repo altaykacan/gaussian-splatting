@@ -63,7 +63,7 @@ class SceneInfo(NamedTuple):
     test_cameras: list
     nerf_normalization: dict
     ply_path: str
-    scene_scale: float
+    scene_scale: float = 1.0
 
 
 def getNerfppNorm(cam_info):

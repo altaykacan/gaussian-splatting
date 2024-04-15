@@ -249,10 +249,10 @@ def training(
 
         # Constant opacity term
         if dataset.use_constant_opacity_loss:
-            opacities = gaussians.get_opacity()[visibility_filter]
-            target_opacity = opt.constant_opacity_value
+            opacities = gaussians.get_opacity[visibility_filter]
+            opacity_target = opt.opacity_target
 
-            opacity_loss = constant_opacity_loss(opacities, target_opacity)
+            opacity_loss = constant_opacity_loss(opacities, opacity_target)
         else:
             opacity_loss = torch.Tensor([0.0]).cuda()
 

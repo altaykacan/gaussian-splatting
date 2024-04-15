@@ -20,7 +20,7 @@ def constant_opacity_loss(opacities: torch.Tensor, target: float):
 
 
 
-def total_variation_loss(depth: torch.Tesor, mask: torch.Tensor=None):
+def total_variation_loss(depth: torch.Tensor, mask: torch.Tensor=None):
     """
     Computes total variation loss intended to make the depth renderings smoother.
     Implementation inspired by DN-Splatter:

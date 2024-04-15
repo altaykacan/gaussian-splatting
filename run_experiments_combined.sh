@@ -24,5 +24,4 @@ python train.py --source_path /usr/stud/kaa/data/splats/custom/ds_combined_cross
 python train.py --source_path /usr/stud/kaa/data/splats/custom/ds_combined_crossroad_dense --images /usr/stud/kaa/data/deepscenario/combined_crossroad/images --use_gt_normal --scale_depths --use_gt_depth --gt_depth_path /usr/stud/kaa/data/deepscenario/combined_crossroad/depths  --iterations 30000 --save_iterations 1000 5000 30000 --test_iterations 1 1000 7000 15000 30000  --lambda_depth 0.2 --lambda_normal 0.1 --use_mask  -m output/81_lr_m_test --position_lr_init 0.000016 --scaling_lr 0.001
 
 
-# Need to adjust the train.py loss computation for this!!!!
 python train.py --source_path /usr/stud/kaa/data/splats/custom/ds_combined_crossroad_dense --images /usr/stud/kaa/data/deepscenario/combined_crossroad/images --use_gt_normal --scale_depths --use_gt_depth --gt_depth_path /usr/stud/kaa/data/deepscenario/combined_crossroad/depths  --iterations 30000 --save_iterations 1000 5000 30000 --test_iterations 1 1000 7000 15000 30000  --lambda_depth 0.2 --lambda_normal 0.1 --use_mask  -m output/81_m_test_inverse_depth
