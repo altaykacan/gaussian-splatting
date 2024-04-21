@@ -129,7 +129,7 @@ def perturb_viewpoint(
     scene_extent: float,
     displacement: float = 1.0,
     scene_extent_percentage: float = 0.01,
-    rot_angle: float = 45,
+    rot_angle: float = 5.0,
 ):
     uid = viewpoint.uid
     colmap_id = viewpoint.colmap_id

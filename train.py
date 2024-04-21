@@ -517,27 +517,27 @@ def training_report(
 
                             tb_writer.add_images(
                                 config["name"]
-                                + "_view_{}/".format(perturbed_viewpoint.image_name),
+                                + "_view_{}_perturbed/render/{}".format(viewpoint.image_name, perturbed_name),
                                 pt_image[None],
                                 global_step=iteration,
                             )
 
                             tb_writer.add_images(
                                 config["name"]
-                                + "_view_{}_entropy/entropy".format(perturbed_viewpoint.image_name),
+                                + "_view_{}_perturbed/entropy/{}".format(viewpoint.image_name, perturbed_name),
                                 pt_entropy[None],
                                 global_step=iteration,
                             )
 
                             tb_writer.add_images(
                                 config["name"]
-                                + "_view_{}_depths/inv_depth".format(perturbed_viewpoint.image_name),
+                                + "_view_{}_perturbed/depths/{}".format(viewpoint.image_name, perturbed_name),
                                 pt_inv_depth_norm[None, None],
                                 global_step=iteration,
                             )  # [None, None] prepends an empty dimension for batch and channel
                             tb_writer.add_images(
                                 config["name"]
-                                + "_view_{}_normals/render".format(perturbed_viewpoint.image_name),
+                                + "_view_{}_perturbed/normals/{}".format(viewpoint.image_name, perturbed_name),
                                 pt_normal_norm[None],
                                 global_step=iteration,
                             )
