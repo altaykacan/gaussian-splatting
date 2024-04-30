@@ -133,8 +133,8 @@ def perturb_viewpoint(
 ):
     uid = viewpoint.uid
     colmap_id = viewpoint.colmap_id
-    R = viewpoint.R  # This is the rotation of W2C
-    T = viewpoint.T  # This is the translation of C2W
+    R = viewpoint.R  # R_WC, this is the rotation of T_WC (cam to world)
+    T = viewpoint.T  # t_cw, this is the translation of T_CW (world to cam) #TODO check if correct
     FoVx = viewpoint.FoVx
     FoVy = viewpoint.FoVy
     image = viewpoint.original_image  # not used for perturbed viewpoints
@@ -143,6 +143,8 @@ def perturb_viewpoint(
 
     rot_angle = np.pi / 180 * rot_angle # convert to radians
 
+    t_wc = - R @ T # t_cw = - R_WC.T @ t_wc, solve for t_wc
+
     perturbed_viewpoints = {}
 
     # x displacement
@@ -150,10 +152,13 @@ def perturb_viewpoint(
         scene_extent * scene_extent_percentage * np.array([displacement, 0.0, 0.0])
     )
 
+    new_t_wc = t_wc + delta_x # need to displace the camera center in world coordinates
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["x_positive"] = Camera(
         colmap_id=colmap_id,
         R=R,
-        T=T + delta_x,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -166,10 +171,13 @@ def perturb_viewpoint(
         gt_normal=None,
     )
 
+    new_t_wc = t_wc - delta_x # need to displace the camera center in world coordinates
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["x_negative"] = Camera(
         colmap_id=colmap_id,
         R=R,
-        T=T - delta_x,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -187,10 +195,13 @@ def perturb_viewpoint(
         scene_extent * scene_extent_percentage * np.array([0.0, displacement, 0.0])
     )
 
+    new_t_wc = t_wc + delta_y # need to displace the camera center in world coordinates
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["y_positive"] = Camera(
         colmap_id=colmap_id,
         R=R,
-        T=T + delta_y,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -203,10 +214,13 @@ def perturb_viewpoint(
         gt_normal=None,
     )
 
+    new_t_wc = t_wc - delta_y # need to displace the camera center in world coordinates
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["y_negative"] = Camera(
         colmap_id=colmap_id,
         R=R,
-        T=T - delta_y,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -224,10 +238,13 @@ def perturb_viewpoint(
         scene_extent * scene_extent_percentage * np.array([0.0, 0.0, displacement])
     )
 
+    new_t_wc = t_wc + delta_z # need to displace the camera center in world coordinates
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["z_positive"] = Camera(
         colmap_id=colmap_id,
         R=R,
-        T=T + delta_z,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -240,10 +257,13 @@ def perturb_viewpoint(
         gt_normal=None,
     )
 
+    new_t_wc = t_wc - delta_z # need to displace the camera center in world coordinates
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["z_negative"] = Camera(
         colmap_id=colmap_id,
         R=R,
-        T=T - delta_z,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -263,10 +283,13 @@ def perturb_viewpoint(
         * np.array([displacement, displacement, displacement])
     )
 
+    new_t_wc = t_wc + delta # need to displace the camera center in world coordinates
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["disp_positive"] = Camera(
         colmap_id=uid,
         R=R,
-        T=T + delta,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -279,10 +302,13 @@ def perturb_viewpoint(
         gt_normal=None,
     )
 
+    new_t_wc = t_wc - delta # need to displace the camera center in world coordinates
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["disp_negative"] = Camera(
         colmap_id=colmap_id,
         R=R,
-        T=T - delta,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -300,13 +326,11 @@ def perturb_viewpoint(
                     [0.0,                1.0,              0.0 ],
                     [-np.sin(rot_angle), 0.0, np.cos(rot_angle)]])
 
-    # R stores the rotation of W2C so we need to inverse it to get the rotation transform
-    # for easy composition. We also need to invert the combined rotations to get
-    # it back to W2C format
-    R_positive = (rot @ R.T).T
-    R_negative = (rot.T @ R.T).T
+    # R stores the rotation of T_WC (cam to world) so we don't need to invert anything
+    R_positive = rot @ R
+    R_negative = rot.T @ R
 
-    perturbed_viewpoints["rot_positive"] = Camera(
+    perturbed_viewpoints["rot_y_positive"] = Camera(
         colmap_id=colmap_id,
         R=R_positive,
         T=T,
@@ -314,7 +338,7 @@ def perturb_viewpoint(
         FoVy=FoVy,
         image=image,
         gt_alpha_mask=None,
-        image_name=image_name + "_rot_positive",
+        image_name=image_name + "_rot_y_positive",
         uid=uid,
         data_device=data_device,
         mask=None,
@@ -322,7 +346,7 @@ def perturb_viewpoint(
         gt_normal=None,
     )
 
-    perturbed_viewpoints["rot_negative"] = Camera(
+    perturbed_viewpoints["rot_y_negative"] = Camera(
         colmap_id=colmap_id,
         R=R_negative,
         T=T,
@@ -330,7 +354,48 @@ def perturb_viewpoint(
         FoVy=FoVy,
         image=image,
         gt_alpha_mask=None,
-        image_name=image_name + "_rot_negative",
+        image_name=image_name + "_rot_y_negative",
+        uid=uid,
+        data_device=data_device,
+        mask=None,
+        gt_depth=None,
+        gt_normal=None,
+    )
+
+    # Rotation around z
+    rot = np.array([[np.cos(rot_angle), -np.sin(rot_angle), 0.0],
+                    [np.sin(rot_angle),  np.sin(rot_angle), 0.0],
+                    [0.0,                0.0,               1.0]])
+
+    # R stores the rotation of T_WC (cam to world) so we don't need to invert anything
+    R_positive = rot @ R
+    R_negative = rot.T @ R
+
+    perturbed_viewpoints["rot_z_positive"] = Camera(
+        colmap_id=colmap_id,
+        R=R_positive,
+        T=T,
+        FoVx=FoVx,
+        FoVy=FoVy,
+        image=image,
+        gt_alpha_mask=None,
+        image_name=image_name + "_rot_z_positive",
+        uid=uid,
+        data_device=data_device,
+        mask=None,
+        gt_depth=None,
+        gt_normal=None,
+    )
+
+    perturbed_viewpoints["rot_z_negative"] = Camera(
+        colmap_id=colmap_id,
+        R=R_negative,
+        T=T,
+        FoVx=FoVx,
+        FoVy=FoVy,
+        image=image,
+        gt_alpha_mask=None,
+        image_name=image_name + "_rot_z_negative",
         uid=uid,
         data_device=data_device,
         mask=None,
@@ -339,10 +404,13 @@ def perturb_viewpoint(
     )
 
     # Combined displacement and rotation
+    new_t_wc = t_wc + delta # displace in original orientation, then rotate
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["combined_positive"] = Camera(
         colmap_id=colmap_id,
         R=R_positive,
-        T=T + delta,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,
@@ -355,10 +423,13 @@ def perturb_viewpoint(
         gt_normal=None,
     )
 
+    new_t_wc = t_wc - delta # displace in original orientation, then rotate
+    new_T = - R.T @ new_t_wc
+
     perturbed_viewpoints["combined_negative"] = Camera(
         colmap_id=colmap_id,
         R=R_negative,
-        T=T - delta,
+        T=new_T,
         FoVx=FoVx,
         FoVy=FoVy,
         image=image,

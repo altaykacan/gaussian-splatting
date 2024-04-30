@@ -243,7 +243,16 @@ def training(
             normal_loss = torch.Tensor([0.0]).cuda()
             tv_loss_normal = torch.Tensor([0.0]).cuda()
 
-        # Entropy regularization
+        # Alpha distribution entropy loss
+        entropy = render_pkg["entropy"]
+        if dataset.use_entropy_regularization:
+            gt_entropy = torch.zeros_like(entropy).cuda()
+        else:
+            gt_entropy = entropy.clone().cuda()
+
+        entropy_loss = l1_loss(entropy, gt_entropy)
+
+        # Opacity entropy regularization
         # TODO implement, visibility_filter is a [num_points] boolean torch tensor that gives you which gaussians are visible in an image
         # We can use that to index the opacities and compute an entropy loss for all of the visible gaussians for a given frame
         # probably it makes sense to do this after some iterations have been done
@@ -257,12 +266,18 @@ def training(
         else:
             opacity_loss = torch.Tensor([0.0]).cuda()
 
+        # loss = (
+        #     (1.0 - opt.lambda_dssim) * Ll1
+        #     + opt.lambda_dssim * ssim_loss
+        #     + opt.lambda_depth * (depth_loss + opt.lambda_tv_depth * tv_loss_depth)
+        #     + opt.lambda_normal * (normal_loss + opt.lambda_tv_normal * tv_loss_normal)
+        #     + opt.lambda_opacity * opacity_loss
+        #     + opt.lambda_entropy * entropy_loss
+        # )
         loss = (
             (1.0 - opt.lambda_dssim) * Ll1
             + opt.lambda_dssim * ssim_loss
-            + opt.lambda_depth * (depth_loss + opt.lambda_tv_depth * tv_loss_depth)
-            + opt.lambda_normal * (normal_loss + opt.lambda_tv_normal * tv_loss_normal)
-            + opt.lambda_opacity * opacity_loss
+            + opt.lambda_entropy * entropy_loss
         )
         loss.backward()
 
@@ -282,6 +297,7 @@ def training(
                 print("Depth loss: ", depth_loss)
                 print("Normal loss: ", normal_loss)
                 print("Opacity loss: ", opacity_loss)
+                print("Entropy loss: ", entropy_loss)
 
             ##########
             # Log and save
@@ -437,25 +453,25 @@ def training_report(
                         viewpoint,
                         scene.gaussians,
                         *renderArgs,
-                        return_depth=True,
-                        return_normal=True,
+                        # return_depth=True,
+                        # return_normal=True,
                     )
 
                     image = torch.clamp(render_results["render"], 0.0, 1.0)
-                    depth = render_results["render_depth"]
-                    inv_depth = 1 / (depth + 0.000001)
-                    normal = render_results["render_normal"]
+                    # depth = render_results["render_depth"]
+                    # inv_depth = 1 / (depth + 0.000001)
+                    # normal = render_results["render_normal"]
                     entropy = render_results["entropy"]
 
                     gt_image = torch.clamp(
                         viewpoint.original_image.to("cuda"), 0.0, 1.0
                     )
-                    inv_depth_norm = (inv_depth - inv_depth.min()) / (
-                        inv_depth.max() - inv_depth.min()
-                    )
+                    # inv_depth_norm = (inv_depth - inv_depth.min()) / (
+                    #     inv_depth.max() - inv_depth.min()
+                    # )
 
-                    # Convert [-1,1] range of the normals to [0,1] for float value visualization
-                    normal_norm = (normal + 1) / 2
+                    # # Convert [-1,1] range of the normals to [0,1] for float value visualization
+                    # normal_norm = (normal + 1) / 2
 
                     entropy = (entropy - entropy.min()) / (entropy.max() - entropy.min())
 
@@ -474,73 +490,73 @@ def training_report(
                             global_step=iteration,
                         )
 
-                        tb_writer.add_images(
-                            config["name"]
-                            + "_view_{}_depths/inv_depth".format(viewpoint.image_name),
-                            inv_depth_norm[None, None],
-                            global_step=iteration,
-                        )  # [None, None] prepends an empty dimension for batch and channel
-                        tb_writer.add_images(
-                            config["name"]
-                            + "_view_{}_normals/render".format(viewpoint.image_name),
-                            normal_norm[None],
-                            global_step=iteration,
-                        )
+                        # tb_writer.add_images(
+                        #     config["name"]
+                        #     + "_view_{}_depths/inv_depth".format(viewpoint.image_name),
+                        #     inv_depth_norm[None, None],
+                        #     global_step=iteration,
+                        # )  # [None, None] prepends an empty dimension for batch and channel
+                        # tb_writer.add_images(
+                        #     config["name"]
+                        #     + "_view_{}_normals/render".format(viewpoint.image_name),
+                        #     normal_norm[None],
+                        #     global_step=iteration,
+                        # )
 
 
-                        # Renderings for perturbed viewpoints
-                        perturbed_viewpoints = perturb_viewpoint(viewpoint, scene.cameras_extent)
+                        # # Renderings for perturbed viewpoints
+                        # perturbed_viewpoints = perturb_viewpoint(viewpoint, scene.cameras_extent)
 
-                        for perturbed_name, perturbed_viewpoint in perturbed_viewpoints.items():
-                            pt_render_results = renderFunc(
-                                perturbed_viewpoint,
-                                scene.gaussians,
-                                *renderArgs,
-                                return_depth=True,
-                                return_normal=True,
-                            )
+                        # for perturbed_name, perturbed_viewpoint in perturbed_viewpoints.items():
+                        #     pt_render_results = renderFunc(
+                        #         perturbed_viewpoint,
+                        #         scene.gaussians,
+                        #         *renderArgs,
+                        #         # return_depth=True,
+                        #         # return_normal=True,
+                        #     )
 
-                            pt_image = torch.clamp(pt_render_results["render"], 0.0, 1.0)
-                            pt_depth = pt_render_results["render_depth"]
-                            pt_inv_depth = 1 / (pt_depth + 0.000001)
-                            pt_normal = pt_render_results["render_normal"]
-                            pt_entropy = pt_render_results["entropy"]
+                        #     pt_image = torch.clamp(pt_render_results["render"], 0.0, 1.0)
+                        #     # pt_depth = pt_render_results["render_depth"]
+                        #     # pt_inv_depth = 1 / (pt_depth + 0.000001)
+                        #     # pt_normal = pt_render_results["render_normal"]
+                        #     pt_entropy = pt_render_results["entropy"]
 
-                            pt_inv_depth_norm = (pt_inv_depth - pt_inv_depth.min()) / (
-                                pt_inv_depth.max() - pt_inv_depth.min()
-                            )
+                        #     # pt_inv_depth_norm = (pt_inv_depth - pt_inv_depth.min()) / (
+                        #     #     pt_inv_depth.max() - pt_inv_depth.min()
+                        #     # )
 
-                            # Convert [-1,1] range of the normals to [0,1] for float value visualization
-                            pt_normal_norm = (pt_normal + 1) / 2
+                        #     # Convert [-1,1] range of the normals to [0,1] for float value visualization
+                        #     # pt_normal_norm = (pt_normal + 1) / 2
 
-                            pt_entropy = (pt_entropy - pt_entropy.min()) / (pt_entropy.max() - pt_entropy.min())
+                        #     pt_entropy = (pt_entropy - pt_entropy.min()) / (pt_entropy.max() - pt_entropy.min())
 
-                            tb_writer.add_images(
-                                config["name"]
-                                + "_view_{}_perturbed/render/{}".format(viewpoint.image_name, perturbed_name),
-                                pt_image[None],
-                                global_step=iteration,
-                            )
+                        #     tb_writer.add_images(
+                        #         config["name"]
+                        #         + "_view_{}_perturbed/render/{}".format(viewpoint.image_name, perturbed_name),
+                        #         pt_image[None],
+                        #         global_step=iteration,
+                        #     )
 
-                            tb_writer.add_images(
-                                config["name"]
-                                + "_view_{}_perturbed/entropy/{}".format(viewpoint.image_name, perturbed_name),
-                                pt_entropy[None],
-                                global_step=iteration,
-                            )
+                        #     tb_writer.add_images(
+                        #         config["name"]
+                        #         + "_view_{}_perturbed/entropy/{}".format(viewpoint.image_name, perturbed_name),
+                        #         pt_entropy[None],
+                        #         global_step=iteration,
+                        #     )
 
-                            tb_writer.add_images(
-                                config["name"]
-                                + "_view_{}_perturbed/depths/{}".format(viewpoint.image_name, perturbed_name),
-                                pt_inv_depth_norm[None, None],
-                                global_step=iteration,
-                            )  # [None, None] prepends an empty dimension for batch and channel
-                            tb_writer.add_images(
-                                config["name"]
-                                + "_view_{}_perturbed/normals/{}".format(viewpoint.image_name, perturbed_name),
-                                pt_normal_norm[None],
-                                global_step=iteration,
-                            )
+                        #     # tb_writer.add_images(
+                        #     #     config["name"]
+                        #     #     + "_view_{}_perturbed/depths/{}".format(viewpoint.image_name, perturbed_name),
+                        #     #     pt_inv_depth_norm[None, None],
+                        #     #     global_step=iteration,
+                        #     # )  # [None, None] prepends an empty dimension for batch and channel
+                        #     # tb_writer.add_images(
+                        #     #     config["name"]
+                        #     #     + "_view_{}_perturbed/normals/{}".format(viewpoint.image_name, perturbed_name),
+                        #     #     pt_normal_norm[None],
+                        #     #     global_step=iteration,
+                        #     # )
 
                         if iteration == testing_iterations[0]:
                             tb_writer.add_images(
@@ -561,57 +577,57 @@ def training_report(
                                     global_step=iteration,
                                 )
 
-                            if viewpoint.gt_depth is not None:
-                                gt_depth = viewpoint.gt_depth.cuda()
-                                gt_inv_depth = 1 / (gt_depth + 0.000001)
-                                gt_inv_depth_norm = (
-                                    gt_inv_depth - gt_inv_depth.min()
-                                ) / (gt_inv_depth.max() - gt_inv_depth.min())
-                                tb_writer.add_images(
-                                    config["name"]
-                                    + "_view_{}_depths/ground_truth".format(
-                                        viewpoint.image_name
-                                    ),
-                                    gt_inv_depth_norm[None, None],
-                                    global_step=iteration,
-                                )
+                            # if viewpoint.gt_depth is not None:
+                            #     gt_depth = viewpoint.gt_depth.cuda()
+                            #     gt_inv_depth = 1 / (gt_depth + 0.000001)
+                            #     gt_inv_depth_norm = (
+                            #         gt_inv_depth - gt_inv_depth.min()
+                            #     ) / (gt_inv_depth.max() - gt_inv_depth.min())
+                            #     tb_writer.add_images(
+                            #         config["name"]
+                            #         + "_view_{}_depths/ground_truth".format(
+                            #             viewpoint.image_name
+                            #         ),
+                            #         gt_inv_depth_norm[None, None],
+                            #         global_step=iteration,
+                            #     )
 
-                                if viewpoint.mask is not None:
-                                    mask_depth = torch.logical_and(
-                                        gt_depth < opt.max_gt_depth,
-                                        gt_depth > opt.min_gt_depth,
-                                    )
-                                    mask_depth = torch.logical_and(
-                                        mask_depth, viewpoint.mask
-                                    )
-                                else:
-                                    mask_depth = torch.logical_and(
-                                        gt_depth < opt.max_gt_depth,
-                                        gt_depth > opt.min_gt_depth,
-                                    )
+                            #     if viewpoint.mask is not None:
+                            #         mask_depth = torch.logical_and(
+                            #             gt_depth < opt.max_gt_depth,
+                            #             gt_depth > opt.min_gt_depth,
+                            #         )
+                            #         mask_depth = torch.logical_and(
+                            #             mask_depth, viewpoint.mask
+                            #         )
+                            #     else:
+                            #         mask_depth = torch.logical_and(
+                            #             gt_depth < opt.max_gt_depth,
+                            #             gt_depth > opt.min_gt_depth,
+                            #         )
 
-                                tb_writer.add_images(
-                                    config["name"]
-                                    + "_view_{}_masks/depth".format(
-                                        viewpoint.image_name
-                                    ),
-                                    mask_depth[None, None],
-                                    global_step=iteration,
-                                )
+                            #     tb_writer.add_images(
+                            #         config["name"]
+                            #         + "_view_{}_masks/depth".format(
+                            #             viewpoint.image_name
+                            #         ),
+                            #         mask_depth[None, None],
+                            #         global_step=iteration,
+                            #     )
 
-                            if viewpoint.gt_normal is not None:
-                                gt_normal = viewpoint.gt_normal.cuda()
-                                gt_normal_norm = (
-                                    gt_normal + 1
-                                ) / 2  # map from [-1,1] to [0,1]
-                                tb_writer.add_images(
-                                    config["name"]
-                                    + "_view_{}_normals/ground_truth".format(
-                                        viewpoint.image_name
-                                    ),
-                                    gt_normal_norm[None],
-                                    global_step=iteration,
-                                )
+                            # if viewpoint.gt_normal is not None:
+                            #     gt_normal = viewpoint.gt_normal.cuda()
+                            #     gt_normal_norm = (
+                            #         gt_normal + 1
+                            #     ) / 2  # map from [-1,1] to [0,1]
+                            #     tb_writer.add_images(
+                            #         config["name"]
+                            #         + "_view_{}_normals/ground_truth".format(
+                            #             viewpoint.image_name
+                            #         ),
+                            #         gt_normal_norm[None],
+                            #         global_step=iteration,
+                            #     )
 
                     l1_test += l1_loss(image, gt_image).mean().double()
                     psnr_test += psnr(image, gt_image).mean().double()
@@ -629,6 +645,7 @@ def training_report(
                     tb_writer.add_scalar(
                         config["name"] + "/loss_viewpoint - psnr", psnr_test, iteration
                     )
+            torch.cuda.empty_cache()
 
         if tb_writer:
             tb_writer.add_histogram(

@@ -75,7 +75,8 @@ class ModelParams(ParamGroup):
         self.use_constant_opacity_loss = False # flag to whether use an additional loss term to guide the gaussian opacities to be the same as `constant_opacity_value` as below
         self.init_opacity = 0.1 # value to initialize the gaussian opacities with, default is 0.1
         self.minimum_opacity = 0.001 # minimum opacity value permitted that is used in pruning of gaussians, default is 0.001
-        self.use_entropy_regularization = False # flag to whether use an entropy regularization term for the loss that pushes opacities of visible gaussians to either 0 or 1 (binary distribution)
+        self.use_opacity_entropy_regularization = False # flag to whether use an entropy regularization term for the loss that pushes opacities of visible gaussians to either 0 or 1 (binary distribution)
+        self.use_entropy_regularization = False # flag to whether use an entropy regularization term that minimizes the per-pixel distribution of the alpha values of the gaussians
 
         super().__init__(parser, "Loading Parameters", sentinel)
 
@@ -121,6 +122,7 @@ class OptimizationParams(ParamGroup):
         self.lambda_entropy = 0.2 # Factor to multiply the entropy regularization term for the visible gaussian opacities
         self.lambda_opacity = 0.01 # Factor used to multiply the constant opacity loss term
         self.opacity_target = 1.0 # the value used for `use_constant_opacity_loss`
+        self.labda_entropy = 0.1 # Factor used to multiply the entropy of the per-pixel alpha value distribution of the gaussians
         super().__init__(parser, "Optimization Parameters")
 
 

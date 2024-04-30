@@ -81,7 +81,15 @@ class Scene:
                 "Found poses.txt, assuming custom dense point clouds are being used with EuRoC format poses!"
             )
             scene_info = sceneLoadTypeCallbacks["DenseCloud"](
-                args.source_path, args.images, args.eval, use_mask=args.use_mask
+                args.source_path,
+                args.images,
+                args.eval,
+                use_mask=args.use_mask,
+                use_gt_depth=args.use_gt_depth,
+                gt_depth_path=args.gt_depth_path,
+                scale_depths=args.scale_depths,
+                gt_normal_path=args.gt_normal_path,
+                use_gt_normal=args.use_gt_normal,
             )
 
         elif os.path.exists(
@@ -158,7 +166,12 @@ class Scene:
                 )
             )
         else:
-            self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent, args.init_from_normals, args.init_opacity)
+            self.gaussians.create_from_pcd(
+                scene_info.point_cloud,
+                self.cameras_extent,
+                args.init_from_normals,
+                args.init_opacity,
+            )
 
     def save(self, iteration):
         point_cloud_path = os.path.join(

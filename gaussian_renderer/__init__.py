@@ -91,7 +91,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen).
-    rendered_image, radii = rasterizer(
+    rendered_image, radii, entropy = rasterizer(
         means3D = means3D,
         means2D = means2D,
         shs = shs,
@@ -101,13 +101,17 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         rotations = rotations,
         cov3D_precomp = cov3D_precomp)
 
+
+    # entropy = torch.zeros_like(rendered_image) # temporarily removing the entropy, might be causing CUDA memory issues
+
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
     return_dict =  {
             "render": rendered_image,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
-            "radii": radii
+            "radii": radii,
+            "entropy":entropy,
          }
 
     # Taken from GaussianPro, viewpoint_camera.world_view_transform is the transpose of the 4x4 W2C matrix (T_CW)
@@ -116,7 +120,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         projvect2 = viewpoint_camera.world_view_transform[:,2][-1].detach() # third component of the translation vector of W2C
         means3D_depth = (means3D * projvect1.unsqueeze(0)).sum(dim=-1,keepdim=True) + projvect2 # first term is the scalar product (orthogonal projection) of the 3D gaussian center to the z axis of the camera (depth)
         means3D_depth = means3D_depth.repeat(1,3)
-        render_depth, _ = rasterizer(
+        render_depth, _, _ = rasterizer(
             means3D = means3D,
             means2D = means2D,
             shs = None,
@@ -144,7 +148,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         R_w2c = torch.tensor(viewpoint_camera.R.T).cuda().to(torch.float32) # cameras save C2W rotation in their R attribute
         normal = (R_w2c @ normal.transpose(0, 1)).transpose(0, 1) # [num_points, 3], normals in camera coordinates
 
-        render_normal, _ = rasterizer(
+        render_normal, _, _ = rasterizer(
             means3D = means3D,
             means2D = means2D,
             shs = None,
@@ -159,7 +163,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     if return_opacity:
         density = torch.ones_like(means3D)
 
-        render_opacity, _ = rasterizer(
+        render_opacity, _, _ = rasterizer(
             means3D = means3D,
             means2D = means2D,
             shs = None,

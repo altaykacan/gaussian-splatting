@@ -37,15 +37,15 @@ def getWorld2View(R, t):
 
 def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     Rt = np.zeros((4, 4))
-    Rt[:3, :3] = R.transpose() # R stores the rotation of W2C but should be C2W to match
-    Rt[:3, 3] = t
+    Rt[:3, :3] = R.transpose() # R stores the rotation of T_WC (C2W) but needs to be T_CW (W2C) to match
+    Rt[:3, 3] = t # t already stores T_CW (W2C)
     Rt[3, 3] = 1.0
 
-    C2W = np.linalg.inv(Rt) # Rt is W2C
-    cam_center = C2W[:3, 3]
+    C2W = np.linalg.inv(Rt) # Rt is T_CW (W2C)
+    cam_center = C2W[:3, 3] # the translation part of T_WC (C2W) is the camera center
     cam_center = (cam_center + translate) * scale
     C2W[:3, 3] = cam_center
-    Rt = np.linalg.inv(C2W) # This is now W2C
+    Rt = np.linalg.inv(C2W) # This is now T_CW (W2C)
     return np.float32(Rt)
 
 def getProjectionMatrix(znear, zfar, fovX, fovY):

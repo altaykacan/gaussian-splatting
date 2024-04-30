@@ -23,8 +23,8 @@ class Camera(nn.Module):
 
         self.uid = uid
         self.colmap_id = colmap_id
-        self.R = R
-        self.T = T
+        self.R = R # rotation for T_WC (cam to world)
+        self.T = T # translation for T_CW (world to cam)
         self.FoVx = FoVx
         self.FoVy = FoVy
         self.image_name = image_name
@@ -69,6 +69,8 @@ class Camera(nn.Module):
         self.trans = trans
         self.scale = scale
 
+        # The world_view_transform and the projection_matrix are actually transposed before feeding into the CUDA code since it works with a column-major assumption
+        # https://github.com/graphdeco-inria/gaussian-splatting/issues/100#issuecomment-1686488410
         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda()
         self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)

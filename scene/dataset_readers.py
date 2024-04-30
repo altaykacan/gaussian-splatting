@@ -110,8 +110,8 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         uid = intr.id
         R = np.transpose(
             qvec2rotmat(extr.qvec)
-        )  # TODO figure out why do we take the transpose? -altay
-        T = np.array(extr.tvec)
+        )  # qvec has T_CW (W2C) from colmap, but we save the rotation matrix for T_WC (C2W)
+        T = np.array(extr.tvec) # this is T_CW's translation component from colmap
 
         if intr.model == "SIMPLE_PINHOLE":
             focal_length_x = intr.params[0]
@@ -506,10 +506,17 @@ def readDenseCloudCameras(
     return cam_infos
 
 
-# TODO implement ground truth depth reading here for depth regularization
-# TODO implement ground truth normal reading here for normal regularization
 def readDenseCloudSceneInfo(
-    path, images, eval, llffhold=8, use_mask=False, use_gt_depth=False
+    path,
+    images,
+    eval,
+    llffhold=8,
+    use_mask=False,
+    use_gt_depth=False,
+    gt_depth_path=None,
+    scale_depths=False,
+    use_gt_normal=False,
+    gt_normal_path=None,
 ):
     """
     Custom function implementation to read SLAM extrinsics and
@@ -523,18 +530,43 @@ def readDenseCloudSceneInfo(
     cameras_intrinsic_file = os.path.join(path, "intrinsics.txt")
 
     cam_intrinsics, crop_box, scale = read_densecloud_intrinsics(cameras_intrinsic_file)
-    cam_extrinsics = read_densecloud_extrinsics(cameras_extrinsic_file, scale)
+    cam_extrinsics = read_densecloud_extrinsics(
+        cameras_extrinsic_file, scale, scale_depths
+    )
 
     reading_dir = "images" if images == None else images
+
+    if gt_depth_path is not None:
+        print(f"Reading images from {gt_depth_path}...")
+    else:
+        print(
+            "No depth path specified, looking for folder 'depths' in the parent directory of the image folder..."
+        )
+
+    if gt_normal_path is not None:
+        print(f"Reading images from {gt_normal_path}...")
+    else:
+        print(
+            "No normal path specified, looking for folder 'normals' in the parent directory of the image folder..."
+        )
     cam_infos_unsorted = readDenseCloudCameras(
-        cam_extrinsics, cam_intrinsics, reading_dir, crop_box, use_mask
+        cam_extrinsics,
+        cam_intrinsics,
+        reading_dir,
+        crop_box,
+        use_mask,
+        use_gt_depth,
+        gt_depth_path,
+        scale_depths,
+        scale,
+        use_gt_normal,
+        gt_normal_path,
     )
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
     if use_mask:
         print("Using masking to compute the loss!")
 
-    # TODO decide whether we need this for our purposes
     if eval:
         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
         test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
@@ -591,7 +623,7 @@ def readDenseCloudSceneInfoColmap(
     except:
         cameras_extrinsic_file = os.path.join(path, "colmap_poses.bin")
         cam_extrinsics = read_densecloud_extrinsics_colmap_binary(
-            cameras_extrinsic_file, scale
+            cameras_extrinsic_file, scale, scale_depths
         )
         print("Using colmap_poses.bin to extract the camera extrinsics!")
 

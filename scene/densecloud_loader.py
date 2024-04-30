@@ -1,8 +1,9 @@
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from .colmap_loader import CameraModel, Camera, BaseImage, Point3D, CAMERA_MODELS, CAMERA_MODEL_IDS, CAMERA_MODEL_NAMES, Image, rotmat2qvec, qvec2rotmat, read_next_bytes
 
-def read_densecloud_extrinsics(path: str, scale=1.0):
+def read_densecloud_extrinsics(path: str, scale=1.0, scale_depths=False):
     """
     Reads the extrinsics and associated image data from EuRoC pose files
     as ORB-SLAM3 provides them and converts the values to the COLMAP format for
@@ -34,18 +35,23 @@ def read_densecloud_extrinsics(path: str, scale=1.0):
 
                 # Read in the quaternions and translation vector for T_WC (camera to world) transform
                 qx, qy, qz, qw = tuple(map(float, elems[4:8]))
-                qvec = np.array([qw, qx, qy, qz])
+                qvec_wc = np.array([qx, qy, qz, qw])
+                rot_WC = Rotation.from_quat(qvec_wc)
+                rot_CW = rot_WC.inv()
+                R_WC = rot_WC.as_matrix()
+                R_CW = rot_CW.as_matrix()
+                qvec_cw = rot_CW.as_quat()
 
-                tvec = np.array(tuple(map(float, elems[1:4])))
-
-                # Invert the quaternion to get T_CW (world to camera) transform
-                qvec = qvec * np.array([1.0, -1.0, -1.0, -1.0]) # TODO check if the inverse operations are consistent with the rotmat2qvec etc. implementations
+                qvec = np.concatenate((qvec_cw[-1:], qvec_cw[:-1])) # colmap has the qw term first and wants q_cw (world to cam)
 
                 # Need to get the translation vector of the inverse transform
-                R_CW = qvec2rotmat(qvec)
+                tvec = np.array(tuple(map(float, elems[1:4]))) # t_wc (cam to world, from orb-slam3)
                 tvec = - R_CW @ tvec[:, None] # t_cw = - R_WC.T @ t_wc, where R_WC.T == R_CW
                 tvec = tvec.squeeze() # rest of the code expects (3,) shape
-                tvec = tvec * scale
+
+                # If we do not scale depths we need to scale the poses
+                if not scale_depths:
+                    tvec *= scale # scaled to match the depth predictions and the pointcloud
 
                 # Assuming images are prepended zeros until length 5
                 image_name = f"{image_id:05}.jpg"
