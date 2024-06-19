@@ -15,9 +15,36 @@ from torch.autograd import Variable
 from math import exp
 
 def constant_opacity_loss(opacities: torch.Tensor, target: float):
+    """
+    Loss term that penalizes any deviation from a target opacity
+    for the (visible) gaussians.
+    """
     # TODO can we mask this in a meaningful way? The opacities is an unordered list of the gaussian opacities
     return torch.mean(torch.abs(opacities - target))
 
+def opacity_entropy_loss(opacities: torch.Tensor):
+    """
+    Loss term that minimizes the entropies of the learnable opacity
+    distributions of the (visible) gaussians. This is different from
+    the alpha entropy regularization as this loss uses only the opacity,
+    not the evaluated 2D gaussian.
+    """
+    return torch.mean(-opacities * torch.log(opacities))
+
+
+def disk_loss(scales: torch.Tensor):
+    """
+    Loss term that penalizes each (visible) gaussian if it's largest two scale
+    values are different from one another and if the smallest scale value is large
+
+    Scales has shape (num_visible_gaussians, 3)
+    """
+    top_two, _ = torch.topk(scales, k=2, dim=1)
+    scale_min, _ = torch.min(scales, dim=1)
+
+    top_difference = top_two[:, 0] - top_two[:, 1]
+
+    return torch.mean(top_difference**2 + scale_min**2)
 
 
 def total_variation_loss(depth: torch.Tensor, mask: torch.Tensor=None):
@@ -55,8 +82,6 @@ def log_depth_loss(network_output, gt, mask=None):
         mask = torch.ones_like(network_output)
 
     return torch.mean(torch.log(1 + torch.abs(network_output - gt)) * mask)
-
-
 
 
 def l1_loss(network_output, gt):

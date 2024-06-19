@@ -22,15 +22,15 @@ from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation, rotate_vector_to_vector
 
 from scipy.spatial.transform import Rotation
-# from simple_knn._C import distCUDA2
-from scipy.spatial import KDTree
+from simple_knn._C import distCUDA2
+# from scipy.spatial import KDTree
 
-def distCUDA2(points):
-    points_np = points.detach().cpu().float().numpy()
-    dists, inds = KDTree(points_np).query(points_np, k=4)
-    meanDists = (dists[:, 1:] ** 2).mean(1)
+# def distCUDA2(points):
+#     points_np = points.detach().cpu().float().numpy()
+#     dists, inds = KDTree(points_np).query(points_np, k=4)
+#     meanDists = (dists[:, 1:] ** 2).mean(1)
 
-    return torch.tensor(meanDists, dtype=points.dtype, device=points.device)
+#     return torch.tensor(meanDists, dtype=points.dtype, device=points.device)
 
 class GaussianModel:
 
@@ -243,6 +243,7 @@ class GaussianModel:
         elements = np.empty(xyz.shape[0], dtype=dtype_full)
         attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
         elements[:] = list(map(tuple, attributes))
+
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
@@ -365,7 +366,7 @@ class GaussianModel:
 
         return optimizable_tensors
 
-    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation):
+    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, selected_pts_mask=None):
         d = {"xyz": new_xyz,
         "f_dc": new_features_dc,
         "f_rest": new_features_rest,
@@ -435,7 +436,12 @@ class GaussianModel:
         prune_mask = (self.get_opacity < min_opacity).squeeze()
         if max_screen_size:
             big_points_vs = self.max_radii2D > max_screen_size # big gaussians in viewspace
-            big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent # big gaussians in worldspace
+
+            if extent != 0.0:
+                big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent # big gaussians in worldspace
+            else:
+                big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * 10
+
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
         self.prune_points(prune_mask)
 

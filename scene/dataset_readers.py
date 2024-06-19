@@ -382,7 +382,7 @@ def readDenseCloudCameras(
     ```
     |- root_directory
     |   |- images_folder
-    |   |   |- <image 0> # as either .jpg or .png files
+    |   |   |- <image 0>  # as .png files
     |   |   |- <image 1>
     |   |   |- ...
     |   |- masks

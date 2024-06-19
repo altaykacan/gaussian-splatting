@@ -74,9 +74,11 @@ class ModelParams(ParamGroup):
         self.init_from_normals = False # flag to determine whether the 3D gaussians are initialized from normal values stored in the initial pointcloud
         self.use_constant_opacity_loss = False # flag to whether use an additional loss term to guide the gaussian opacities to be the same as `constant_opacity_value` as below
         self.init_opacity = 0.1 # value to initialize the gaussian opacities with, default is 0.1
-        self.minimum_opacity = 0.001 # minimum opacity value permitted that is used in pruning of gaussians, default is 0.001
+        self.minimum_opacity = 0.005 # minimum opacity value permitted that is used in pruning of gaussians, default is 0.005
         self.use_opacity_entropy_regularization = False # flag to whether use an entropy regularization term for the loss that pushes opacities of visible gaussians to either 0 or 1 (binary distribution)
         self.use_entropy_regularization = False # flag to whether use an entropy regularization term that minimizes the per-pixel distribution of the alpha values of the gaussians
+        self.use_disk_loss = False # flag to whether use regularization term that pushes gaussians to be disks (2 scales equal, 1 scale much smaller)
+        self.use_opacity_entropy_loss = False # flag to whether use a regularization term that minimizes the opacity distribution of the visible gaussians
 
         super().__init__(parser, "Loading Parameters", sentinel)
 
@@ -119,10 +121,13 @@ class OptimizationParams(ParamGroup):
         self.lambda_tv_normal = 0.1  # Factor to multiply the total variation loss used to smoothen the normal losses
         self.max_gt_depth = 50.0  # Maximum groundtruth depth threshold for depth and normal regularization, ignored when `use_inverse_depth` is true
         self.min_gt_depth = 0.0  # Minimum groundtruth depth threshold for depth and normal regularization, ignored when `use_inverse_depth` is true
-        self.lambda_entropy = 0.2 # Factor to multiply the entropy regularization term for the visible gaussian opacities
         self.lambda_opacity = 0.01 # Factor used to multiply the constant opacity loss term
         self.opacity_target = 1.0 # the value used for `use_constant_opacity_loss`
-        self.labda_entropy = 0.1 # Factor used to multiply the entropy of the per-pixel alpha value distribution of the gaussians
+        self.lambda_entropy = 0.1 # Factor used to multiply the entropy of the per-pixel alpha value distribution of the gaussians
+        self.lambda_disk = 0.2
+        self.lambda_opacity_entropy = 0.1
+        self.apply_entropy_losses_from_iter = 0
+        self.apply_entropy_losses_until_iter = self.iterations
         super().__init__(parser, "Optimization Parameters")
 
 

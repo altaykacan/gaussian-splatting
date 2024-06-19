@@ -54,7 +54,7 @@ def read_densecloud_extrinsics(path: str, scale=1.0, scale_depths=False):
                     tvec *= scale # scaled to match the depth predictions and the pointcloud
 
                 # Assuming images are prepended zeros until length 5
-                image_name = f"{image_id:05}.jpg"
+                image_name = f"{image_id:05}.png"
 
                 # These are normally there in the COLMAP images.txt files but we don't need them
                 xys = None
