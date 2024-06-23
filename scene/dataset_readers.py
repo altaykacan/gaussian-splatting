@@ -94,7 +94,7 @@ def getNerfppNorm(cam_info):
     return {"translate": translate, "radius": radius}
 
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, use_mask=False):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write("\r")
@@ -130,6 +130,14 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
+        if use_mask:
+            # Masks directory is expected to be in the same root directory as the images folder
+            mask_folder = os.path.join(os.path.dirname(images_folder), "masks_moveable")
+            mask_path = os.path.join(mask_folder, extr.name + ".png")  # use png masks to avoid compression
+            mask = Image.open(mask_path)
+            mask = np.array(mask, dtype=bool)
+        else:
+            mask = None
 
         cam_info = CameraInfo(
             uid=uid,
@@ -142,6 +150,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             image_name=image_name,
             width=width,
             height=height,
+            mask=mask,
         )
         cam_infos.append(cam_info)
     sys.stdout.write("\n")
@@ -192,7 +201,7 @@ def storePly(path, xyz, rgb):
     ply_data.write(path)
 
 
-def readColmapSceneInfo(path, images, eval, llffhold=8):
+def readColmapSceneInfo(path, images, eval, use_mask=False, llffhold=8):
     """
     Reads relevant scene information from the source path `path`.
     Returns a `SceneInfo` object that contains information about the pointcloud,
@@ -216,6 +225,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         cam_extrinsics=cam_extrinsics,
         cam_intrinsics=cam_intrinsics,
         images_folder=os.path.join(path, reading_dir),
+        use_mask=use_mask,
     )
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
@@ -386,7 +396,7 @@ def readDenseCloudCameras(
     |   |   |- <image 1>
     |   |   |- ...
     |   |- masks
-    |   |   |- <mask 0> # as .png files
+    |   |   |- <mask 0> # as .png files, masks are named as <image_name>.png (might include double .png extensions)
     |   |   |- <mask 1>
     |   |   |- ...
     |   |- <gt_depth_path> # `root_directory/depths` by default
@@ -440,29 +450,22 @@ def readDenseCloudCameras(
             image = image.resize((width, height))
 
         if use_mask:
-            image_stem, extension = extr.name.split(".")
 
             # Masks directory is expected to be in the same root directory as the images folder
-            mask_folder = os.path.join(os.path.dirname(images_folder), "masks")
-            mask_path = os.path.join(
-                mask_folder, image_stem + "_mask" + ".png"
-            )  # use png masks to avoid compression
+            mask_folder = os.path.join(os.path.dirname(images_folder), "masks_moveable")
+            mask_path = os.path.join(mask_folder, extr.name + ".png")  # use png masks to avoid compression
             mask = Image.open(mask_path)
             mask = np.array(mask, dtype=bool)
         else:
             mask = None
 
         if use_gt_depth:
-            image_stem, extension = extr.name.split(".")
-
             if gt_depth_path == "depths":
                 depth_folder = os.path.join(os.path.dirname(images_folder), "depths")
             else:
                 depth_folder = gt_depth_path
 
-            depth_path = os.path.join(
-                depth_folder, image_stem + ".npy"
-            )  # saving as numpy arrays
+            depth_path = os.path.join(depth_folder, extr.name.replace(".png", ".npy"))  # saved as numpy arrays
             depth = np.load(depth_path)
 
             # If we do not multiply the poses with the scale, we need to divide the depths by it

@@ -63,7 +63,7 @@ class Scene:
             os.path.join(args.source_path, "sparse")
         ):  # loads colmap data if folder "sparse" is there
             scene_info = sceneLoadTypeCallbacks["Colmap"](
-                args.source_path, args.images, args.eval
+                args.source_path, args.images, args.eval, use_mask=args.use_mask
             )
 
         elif os.path.exists(
