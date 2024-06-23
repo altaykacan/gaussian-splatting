@@ -10,3 +10,6 @@
 [submodule "submodules/diff-gaussian-rasterization-w-pose"]
 	path = submodules/diff-gaussian-rasterization-w-pose
 	url = https://github.com/altaykacan/diff-gaussian-rasterization-w-pose.git
+[submodule "submodules/diff-gaussian-rasterization-entropy"]
+	path = submodules/diff-gaussian-rasterization-entropy
+	url = git@github.com:altaykacan/diff-gaussian-rasterization-entropy.git
