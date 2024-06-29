@@ -154,7 +154,7 @@ def ssim_mask(img1, img2, mask, window_size=11, size_average=True):
     window = create_window(window_size, channel)
 
     # Assumes window size will be odd, basically grows the ignored regions
-    mask = shrink_bool_mask(mask, iterations=1, kernel_size=window_size)
+    mask = shrink_bool_mask(mask, iterations=1, kernel_size=window_size // 2)
 
     # # mask has the pixels True where we should compute the loss
     # mask = torch.logical_not(mask)
