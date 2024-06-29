@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
+from utils.image_utils import shrink_bool_mask
 
 def constant_opacity_loss(opacities: torch.Tensor, target: float):
     """
@@ -21,6 +22,7 @@ def constant_opacity_loss(opacities: torch.Tensor, target: float):
     """
     # TODO can we mask this in a meaningful way? The opacities is an unordered list of the gaussian opacities
     return torch.mean(torch.abs(opacities - target))
+
 
 def opacity_entropy_loss(opacities: torch.Tensor):
     """
@@ -151,6 +153,9 @@ def ssim_mask(img1, img2, mask, window_size=11, size_average=True):
     channel = img1.size(-3)
     window = create_window(window_size, channel)
 
+    # Assumes window size will be odd, basically grows the ignored regions
+    mask = shrink_bool_mask(mask, iterations=1, kernel_size=window_size)
+
     # # mask has the pixels True where we should compute the loss
     # mask = torch.logical_not(mask)
 
@@ -167,7 +172,6 @@ def ssim_mask(img1, img2, mask, window_size=11, size_average=True):
     return _ssim_mask(img1, img2, mask, window, window_size, channel, size_average)
 
 def _ssim_mask(img1, img2, mask, window, window_size, channel, size_average=True):
-    # TODO grow the mask by half the window size and then compute the metric!!!
     mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
     mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
 

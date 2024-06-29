@@ -96,7 +96,7 @@ def readColmapCameras(
         cam_intrinsics,
         images_folder,
         use_mask=False,
-        mask_path=None,
+        mask_dir=None,
         ):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
@@ -135,8 +135,8 @@ def readColmapCameras(
         image = Image.open(image_path)
         if use_mask:
             # Masks directory is expected to be in the same root directory as the images folder
-            curr_mask_path = os.path.join(mask_path, extr.name + ".png")  # use png masks to avoid compression
-            mask = Image.open(curr_mask_path)
+            mask_path = os.path.join(mask_dir, extr.name + ".png")  # use png masks to avoid compression
+            mask = Image.open(mask_path)
             mask = np.array(mask, dtype=bool)
         else:
             mask = None
@@ -377,7 +377,7 @@ def readDenseCloudCameras(
     images_folder,
     crop_box=None,
     use_mask=False,
-    mask_path= None,
+    mask_dir=None,
     use_gt_depth=False,
     gt_depth_path=None,
     scale_depths=False,
@@ -389,26 +389,6 @@ def readDenseCloudCameras(
     A modified version of `readColmapCameras()` that does image preprocessing
     if necessary. This is useful when working with dense pointclouds where we
     have one "raw" dataset that we use.
-
-    Expected directory structure for the input:
-    ```
-    |- root_directory
-    |   |- images_folder
-    |   |   |- <image 0>  # as .png files
-    |   |   |- <image 1>
-    |   |   |- ...
-    |   |- masks
-    |   |   |- <mask 0> # as .png files, masks are named as <image_name>.png (might include double .png extensions)
-    |   |   |- <mask 1>
-    |   |   |- ...
-    |   |- <gt_depth_path> # `root_directory/depths` by default
-    |   |   |- <depth 0> # as .npy files
-    |   |   |- <depth 1>
-    |   |   |- ...
-    |   |- <gt_normal_path> # `root_directory/normals` by default
-    |   |   |- <normal 0> # as .npy files
-    |   |   |- <normal 1>
-    |   |   |- ...
     ```
 
     """
@@ -452,10 +432,8 @@ def readDenseCloudCameras(
             image = image.resize((width, height))
 
         if use_mask:
-
             # Masks directory is expected to be in the same root directory as the images folder
-            mask_folder = os.path.join(os.path.dirname(images_folder), "masks_moveable")
-            mask_path = os.path.join(mask_folder, extr.name + ".png")  # use png masks to avoid compression
+            mask_path = os.path.join(mask_dir, extr.name + ".png")  # use png masks to avoid compression
             mask = Image.open(mask_path)
             mask = np.array(mask, dtype=bool)
         else:
@@ -517,7 +495,7 @@ def readDenseCloudSceneInfo(
     eval,
     llffhold=8,
     use_mask=False,
-    mask_path=None,
+    mask_dir=None,
     use_gt_depth=False,
     gt_depth_path=None,
     scale_depths=False,
@@ -561,7 +539,7 @@ def readDenseCloudSceneInfo(
         reading_dir,
         crop_box,
         use_mask,
-        mask_path=mask_path,
+        mask_dir=mask_dir,
         use_gt_depth=use_gt_depth,
         gt_depth_path=gt_depth_path,
         scale_depth=scale_depths,
@@ -606,7 +584,7 @@ def readDenseCloudSceneInfoColmap(
     eval,
     llffhold=8,
     use_mask=False,
-    mask_path=None,
+    mask_dir=None,
     use_gt_depth=False,
     gt_depth_path=None,
     scale_depths=False,
@@ -657,7 +635,7 @@ def readDenseCloudSceneInfoColmap(
         reading_dir,
         crop_box,
         use_mask,
-        mask_path=mask_path,
+        mask_dir=mask_dir,
         use_gt_depth=use_gt_depth,
         gt_depth_path=gt_depth_path,
         scale_depths=scale_depths,
