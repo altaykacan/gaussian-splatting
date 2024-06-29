@@ -254,7 +254,7 @@ def training(
             + opt.lambda_depth * (depth_loss + opt.lambda_tv_depth * tv_loss_depth)
             + opt.lambda_normal * (normal_loss + opt.lambda_tv_normal * tv_loss_normal)
             + opt.lambda_opacity * opacity_loss
-            + opt.lambda_entropy * entropy_loss
+            # + opt.lambda_entropy * entropy_loss
             + opt.lambda_disk * disk_loss_term
         )
 
@@ -279,7 +279,7 @@ def training(
                 print("Depth loss: ", depth_loss)
                 print("Normal loss: ", normal_loss)
                 print("Opacity loss: ", opacity_loss)
-                print("Entropy loss: ", entropy_loss)
+                # print("Entropy loss: ", entropy_loss)
                 print("Radii max: ", radii.max())
                 print("Gaussian scales max: ", gaussians.get_scaling.max())
                 print("Number of gaussians: ", gaussians.get_scaling.shape[0])
@@ -303,7 +303,7 @@ def training(
                 normal_loss=normal_loss,
                 tv_loss_normal=tv_loss_normal,
                 opacity_loss=opacity_loss,
-                entropy_loss=entropy_loss,
+                # entropy_loss=entropy_loss,
                 disk_loss=disk_loss_term,
                 opt=opt,
             )
@@ -393,7 +393,7 @@ def training_report(
     normal_loss=None,
     tv_loss_normal=None,
     opacity_loss=None,
-    entropy_loss=None,
+    # entropy_loss=None,
     disk_loss=None,
     opt=None,
 ):
@@ -417,8 +417,8 @@ def training_report(
         if opacity_loss is not None:
             tb_writer.add_scalar("train_loss_patches/constant_opacity_loss", opacity_loss.item(), iteration)
 
-        if entropy_loss is not None:
-            tb_writer.add_scalar("train_loss_patches/entropy_loss", entropy_loss.item(), iteration)
+        # if entropy_loss is not None:
+            # tb_writer.add_scalar("train_loss_patches/entropy_loss", entropy_loss.item(), iteration)
 
         if disk_loss is not None:
             tb_writer.add_scalar("train_loss_patches/disk_loss", disk_loss.item(), iteration)
@@ -455,7 +455,7 @@ def training_report(
                     depth = render_results["render_depth"]
                     inv_depth = 1 / (depth + 0.000001)
                     normal = render_results["render_normal"]
-                    entropy = render_results["entropy"]
+                    # entropy = render_results["entropy"]
 
                     gt_image = torch.clamp(
                         viewpoint.original_image.to("cuda"), 0.0, 1.0
@@ -467,7 +467,7 @@ def training_report(
                     # Convert [-1,1] range of the normals to [0,1] for float value visualization
                     normal_norm = (normal + 1) / 2
 
-                    entropy = (entropy - entropy.min()) / (entropy.max() - entropy.min())
+                    # entropy = (entropy - entropy.min()) / (entropy.max() - entropy.min())
 
                     if tb_writer and (idx < 5):
                         tb_writer.add_images(
@@ -477,12 +477,12 @@ def training_report(
                             global_step=iteration,
                         )
 
-                        tb_writer.add_images(
-                            config["name"]
-                            + "_view_{}_entropy/entropy".format(viewpoint.image_name),
-                            entropy[None],
-                            global_step=iteration,
-                        )
+                        # tb_writer.add_images(
+                        #     config["name"]
+                        #     + "_view_{}_entropy/entropy".format(viewpoint.image_name),
+                        #     entropy[None],
+                        #     global_step=iteration,
+                        # )
 
                         tb_writer.add_images(
                             config["name"]
@@ -513,7 +513,7 @@ def training_report(
                             pt_depth = pt_render_results["render_depth"]
                             pt_inv_depth = 1 / (pt_depth + 0.000001)
                             pt_normal = pt_render_results["render_normal"]
-                            pt_entropy = pt_render_results["entropy"]
+                            # pt_entropy = pt_render_results["entropy"]
 
                             pt_inv_depth_norm = (pt_inv_depth - pt_inv_depth.min()) / (
                                 pt_inv_depth.max() - pt_inv_depth.min()
@@ -522,7 +522,7 @@ def training_report(
                             # Convert [-1,1] range of the normals to [0,1] for float value visualization
                             pt_normal_norm = (pt_normal + 1) / 2
 
-                            pt_entropy = (pt_entropy - pt_entropy.min()) / (pt_entropy.max() - pt_entropy.min())
+                            # pt_entropy = (pt_entropy - pt_entropy.min()) / (pt_entropy.max() - pt_entropy.min())
 
                             tb_writer.add_images(
                                 config["name"]
@@ -531,12 +531,12 @@ def training_report(
                                 global_step=iteration,
                             )
 
-                            tb_writer.add_images(
-                                config["name"]
-                                + "_view_{}_perturbed/entropy/{}".format(viewpoint.image_name, perturbed_name),
-                                pt_entropy[None],
-                                global_step=iteration,
-                            )
+                            # tb_writer.add_images(
+                            #     config["name"]
+                            #     + "_view_{}_perturbed/entropy/{}".format(viewpoint.image_name, perturbed_name),
+                            #     pt_entropy[None],
+                            #     global_step=iteration,
+                            # )
 
                             tb_writer.add_images(
                                 config["name"]
