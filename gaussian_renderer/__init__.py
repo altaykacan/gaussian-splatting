@@ -91,7 +91,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen).
-    rendered_image, radii, entropy = rasterizer(
+    rendered_image, radii = rasterizer(
         means3D = means3D,
         means2D = means2D,
         shs = shs,
@@ -100,6 +100,17 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         scales = scales,
         rotations = rotations,
         cov3D_precomp = cov3D_precomp)
+
+    # removed entropy for now
+    # rendered_image, radii, entropy = rasterizer(
+    #     means3D = means3D,
+    #     means2D = means2D,
+    #     shs = shs,
+    #     colors_precomp = colors_precomp,
+    #     opacities = opacity,
+    #     scales = scales,
+    #     rotations = rotations,
+    #     cov3D_precomp = cov3D_precomp)
 
 
     # entropy = torch.zeros_like(rendered_image) # temporarily removing the entropy, might be causing CUDA memory issues
@@ -111,7 +122,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
             "radii": radii,
-            "entropy":entropy,
+            # "entropy":entropy,
          }
 
     # Taken from GaussianPro, viewpoint_camera.world_view_transform is the transpose of the 4x4 W2C matrix (T_CW)

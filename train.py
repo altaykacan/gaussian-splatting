@@ -222,14 +222,15 @@ def training(
             normal_loss = torch.Tensor([0.0]).cuda()
             tv_loss_normal = torch.Tensor([0.0]).cuda()
 
-        # Alpha entropy regularization
-        entropy = render_pkg["entropy"]
-        if dataset.use_entropy_regularization and (iteration > opt.apply_entropy_losses_from_iter) and (iteration < opt.apply_entropy_losses_until_iter):
-            gt_entropy = torch.zeros_like(entropy).cuda()
-        else:
-            gt_entropy = entropy.clone().cuda()
+        # # Alpha entropy regularization
+        # entropy = render_pkg["entropy"]
+        # if dataset.use_entropy_regularization and (iteration > opt.apply_entropy_losses_from_iter) and (iteration < opt.apply_entropy_losses_until_iter):
+        #     gt_entropy = torch.zeros_like(entropy).cuda()
+        # else:
+        #     gt_entropy = entropy.clone().cuda()
 
-        entropy_loss = l1_loss(entropy, gt_entropy)
+        # entropy_loss = l1_loss(entropy, gt_entropy)
+        entropy_loss = 0.0 # ignoring entropy for now
 
         # Constant opacity term
         if dataset.use_constant_opacity_loss:
