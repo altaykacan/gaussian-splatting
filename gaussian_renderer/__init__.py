@@ -131,7 +131,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         projvect2 = viewpoint_camera.world_view_transform[:,2][-1].detach() # third component of the translation vector of W2C
         means3D_depth = (means3D * projvect1.unsqueeze(0)).sum(dim=-1,keepdim=True) + projvect2 # first term is the scalar product (orthogonal projection) of the 3D gaussian center to the z axis of the camera (depth)
         means3D_depth = means3D_depth.repeat(1,3)
-        render_depth, _, _ = rasterizer(
+        render_depth, _ = rasterizer(
             means3D = means3D,
             means2D = means2D,
             shs = None,
