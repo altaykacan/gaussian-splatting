@@ -93,6 +93,7 @@ class Scene:
                 args.images,
                 args.eval,
                 use_mask=args.use_mask,
+                mask_path=args.mask_path,
                 use_gt_depth=args.use_gt_depth,
                 gt_depth_path=args.gt_depth_path,
                 scale_depths=args.scale_depths,
