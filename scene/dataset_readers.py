@@ -52,9 +52,8 @@ class CameraInfo(NamedTuple):
     height: int
     mask: np.array = None  # optional mask for loss computation
     gt_depth: np.array = None  # optional ground truth depth for depth regularization
-    gt_normal: np.array = (
-        None  # optional ground truth normals for normal regularization
-    )
+    gt_normal: np.array = None  # optional ground truth normals for normal regularization
+
 
 
 class SceneInfo(NamedTuple):
@@ -82,9 +81,7 @@ def getNerfppNorm(cam_info):
     for cam in cam_info:
         W2C = getWorld2View2(cam.R, cam.T)
         C2W = np.linalg.inv(W2C)
-        cam_centers.append(
-            C2W[:3, 3:4]
-        )  # list of camera center coordinates in world frame
+        cam_centers.append(C2W[:3, 3:4])  # list of camera center coordinates in world frame
 
     center, diagonal = get_center_and_diag(cam_centers)
     radius = diagonal * 1.1
@@ -94,7 +91,13 @@ def getNerfppNorm(cam_info):
     return {"translate": translate, "radius": radius}
 
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, use_mask=False):
+def readColmapCameras(
+        cam_extrinsics,
+        cam_intrinsics,
+        images_folder,
+        use_mask=False,
+        mask_path=None,
+        ):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write("\r")
@@ -108,10 +111,12 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, use_mask=Fa
         width = intr.width
 
         uid = intr.id
-        R = np.transpose(
-            qvec2rotmat(extr.qvec)
-        )  # qvec has T_CW (W2C) from colmap, but we save the rotation matrix for T_WC (C2W)
-        T = np.array(extr.tvec) # this is T_CW's translation component from colmap
+
+        # qvec has T_CW (W2C) from colmap, but we save the rotation matrix for T_WC (C2W)
+        R = np.transpose(qvec2rotmat(extr.qvec))
+
+        # This is T_CW's translation component from colmap
+        T = np.array(extr.tvec)
 
         if intr.model == "SIMPLE_PINHOLE":
             focal_length_x = intr.params[0]
@@ -123,18 +128,15 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, use_mask=Fa
             FovY = focal2fov(focal_length_y, height)
             FovX = focal2fov(focal_length_x, width)
         else:
-            assert (
-                False
-            ), "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
+            assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
         if use_mask:
             # Masks directory is expected to be in the same root directory as the images folder
-            mask_folder = os.path.join(os.path.dirname(images_folder), "masks_moveable")
-            mask_path = os.path.join(mask_folder, extr.name + ".png")  # use png masks to avoid compression
-            mask = Image.open(mask_path)
+            curr_mask_path = os.path.join(mask_path, extr.name + ".png")  # use png masks to avoid compression
+            mask = Image.open(curr_mask_path)
             mask = np.array(mask, dtype=bool)
         else:
             mask = None
@@ -201,7 +203,7 @@ def storePly(path, xyz, rgb):
     ply_data.write(path)
 
 
-def readColmapSceneInfo(path, images, eval, use_mask=False, llffhold=8):
+def readColmapSceneInfo(path, images, eval, use_mask=False, mask_path=None, llffhold=8):
     """
     Reads relevant scene information from the source path `path`.
     Returns a `SceneInfo` object that contains information about the pointcloud,
@@ -226,6 +228,7 @@ def readColmapSceneInfo(path, images, eval, use_mask=False, llffhold=8):
         cam_intrinsics=cam_intrinsics,
         images_folder=os.path.join(path, reading_dir),
         use_mask=use_mask,
+        mask_path=mask_path,
     )
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
@@ -242,9 +245,7 @@ def readColmapSceneInfo(path, images, eval, use_mask=False, llffhold=8):
     bin_path = os.path.join(path, "sparse/0/points3D.bin")
     txt_path = os.path.join(path, "sparse/0/points3D.txt")
     if not os.path.exists(ply_path):
-        print(
-            "Converting point3d.bin to .ply, will happen only the first time you open the scene."
-        )
+        print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
         try:
             xyz, rgb, _ = read_points3D_binary(bin_path)
         except:
@@ -376,6 +377,7 @@ def readDenseCloudCameras(
     images_folder,
     crop_box=None,
     use_mask=False,
+    mask_path= None,
     use_gt_depth=False,
     gt_depth_path=None,
     scale_depths=False,

@@ -54,13 +54,15 @@ class ParamGroup:
 class ModelParams(ParamGroup):
     def __init__(self, parser, sentinel=False):
         self.sh_degree = 3
-        self._source_path = ""
+        self._source_path = "" # if it starts with an underscore, it allows single character options (-s, -m, -i)
         self._model_path = ""
         self._images = "images"
         self._resolution = -1
         self._white_background = False
         self.data_device = "cuda"
         self.eval = False
+        self.llffhold = 8 # every llffhold'th image will be used as a test image
+        self.mask_path = None # path to the directory where the precomputed masks are
         self.use_mask = False  # masking flag to remove pixels based off of a precomputed segmentation map to ignore certain pixels
         self.use_gt_depth = False  # flag to determine whether depth predictions are used to regularize the training
         self.use_log_loss_depth = False  # flag to determine whether the logarithm is used instead of the standard L1 loss for the depth regularization term

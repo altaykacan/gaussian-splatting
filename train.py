@@ -117,7 +117,7 @@ def training(
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
-        # Pick a random Camera
+        # Pick a random Camera for every iteration
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
@@ -137,7 +137,7 @@ def training(
             bg,
             return_depth=dataset.use_gt_depth,
             return_normal=dataset.use_gt_normal,
-        )  # TODO maybe can add masking here (cuda) as well -altay
+        )  # TODO maybe can add masking here (to the cuda function) as well -altay
 
         image, viewspace_point_tensor, visibility_filter, radii = (
             render_pkg["render"],
@@ -169,7 +169,7 @@ def training(
                 # Trying out inverse depth
                 mask_depth = torch.ones_like(depth)
                 depth = 1 / (depth + 0.000001)
-                gt_depth = (1 / (gt_depth + 0.000001)).clone() # don't want to change the label, so we clone
+                gt_depth = (1 / (gt_depth + 0.000001))
             else:
                 mask_depth = torch.logical_and(
                     gt_depth < opt.max_gt_depth, gt_depth > opt.min_gt_depth
@@ -231,11 +231,6 @@ def training(
 
         entropy_loss = l1_loss(entropy, gt_entropy)
 
-        # Opacity entropy regularization
-        # TODO implement, visibility_filter is a [num_points] boolean torch tensor that gives you which gaussians are visible in an image
-        # We can use that to index the opacities and compute an entropy loss for all of the visible gaussians for a given frame
-        # probably it makes sense to do this after some iterations have been done
-
         # Constant opacity term
         if dataset.use_constant_opacity_loss:
             opacities = gaussians.get_opacity[visibility_filter]
@@ -245,14 +240,12 @@ def training(
         else:
             opacity_loss = torch.Tensor([0.0]).cuda()
 
-
         # Disk loss
         if dataset.use_disk_loss:
             scales = gaussians.get_scaling[visibility_filter]
             disk_loss_term = disk_loss(scales)
         else:
             disk_loss_term = torch.Tensor([0.0]).cuda()
-
 
         loss = (
             (1.0 - opt.lambda_dssim) * Ll1
@@ -289,7 +282,6 @@ def training(
                 print("Radii max: ", radii.max())
                 print("Gaussian scales max: ", gaussians.get_scaling.max())
                 print("Number of gaussians: ", gaussians.get_scaling.shape[0])
-
 
             ##########
             # Log and save
@@ -410,39 +402,25 @@ def training_report(
         tb_writer.add_scalar("iter_time", elapsed, iteration)
 
         if depth_loss is not None:
-            tb_writer.add_scalar(
-                "train_loss_patches/depth_loss", depth_loss.item(), iteration
-            )
+            tb_writer.add_scalar("train_loss_patches/depth_loss", depth_loss.item(), iteration)
 
         if tv_loss_depth is not None:
-            tb_writer.add_scalar(
-                "train_loss_patches/tv_loss_depth", tv_loss_depth.item(), iteration
-            )
+            tb_writer.add_scalar("train_loss_patches/tv_loss_depth", tv_loss_depth.item(), iteration)
 
         if normal_loss is not None:
-            tb_writer.add_scalar(
-                "train_loss_patches/normal_loss", normal_loss.item(), iteration
-            )
+            tb_writer.add_scalar("train_loss_patches/normal_loss", normal_loss.item(), iteration)
 
         if tv_loss_normal is not None:
-            tb_writer.add_scalar(
-                "train_loss_patches/tv_loss_normal", tv_loss_normal.item(), iteration
-            )
+            tb_writer.add_scalar("train_loss_patches/tv_loss_normal", tv_loss_normal.item(), iteration)
 
         if opacity_loss is not None:
-            tb_writer.add_scalar(
-                "train_loss_patches/constant_opacity_loss", opacity_loss.item(), iteration
-            )
+            tb_writer.add_scalar("train_loss_patches/constant_opacity_loss", opacity_loss.item(), iteration)
 
         if entropy_loss is not None:
-            tb_writer.add_scalar(
-                "train_loss_patches/entropy_loss", entropy_loss.item(), iteration
-            )
+            tb_writer.add_scalar("train_loss_patches/entropy_loss", entropy_loss.item(), iteration)
 
         if disk_loss is not None:
-            tb_writer.add_scalar(
-                "train_loss_patches/disk_loss", disk_loss.item(), iteration
-            )
+            tb_writer.add_scalar("train_loss_patches/disk_loss", disk_loss.item(), iteration)
 
     # Report test and samples of training set
     if iteration in testing_iterations:
@@ -521,7 +499,6 @@ def training_report(
 
                         # Renderings for perturbed viewpoints
                         perturbed_viewpoints = perturb_viewpoint(viewpoint, scene.cameras_extent)
-
                         for perturbed_name, perturbed_viewpoint in perturbed_viewpoints.items():
                             pt_render_results = renderFunc(
                                 perturbed_viewpoint,
@@ -687,12 +664,8 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=6009)
     parser.add_argument("--debug_from", type=int, default=-1)
     parser.add_argument("--detect_anomaly", action="store_true", default=False)
-    parser.add_argument(
-        "--test_iterations", nargs="+", type=int, default=[7_000, 30_000]
-    )
-    parser.add_argument(
-        "--save_iterations", nargs="+", type=int, default=[7_000, 30_000]
-    )
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 15_000, 30_000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 15_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default=None)
@@ -702,9 +675,7 @@ if __name__ == "__main__":
     print("Optimizing " + args.model_path)
 
     # Initialize system state (RNG)
-    safe_state(
-        args.quiet
-    )  # overrides sys.stdout for nice printing and sets deterministic state
+    safe_state(args.quiet)  # overrides sys.stdout for nice printing and sets deterministic state
 
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)

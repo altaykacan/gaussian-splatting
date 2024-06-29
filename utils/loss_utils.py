@@ -87,34 +87,31 @@ def log_depth_loss(network_output, gt, mask=None):
 def l1_loss(network_output, gt):
     return torch.abs((network_output - gt)).mean()
 
+
 def l1_loss_mask(network_output, gt, mask):
     """
     Custom l1 loss with masking using a boolean tensor. Computes the l1 loss
     for True elements in the mask and computes the mean accross all pixels
     to equally weight them.
     """
-    # mask = torch.logical_not(mask)
-
-    # # If gt is an rgb image with 3 channels, we need to expand our binary mask to match it
-    # if len(gt.shape) == 3 and len(mask.shape) == 2:
-    #     mask = mask[None, :, :].expand(3, -1, -1)
-
-    # gt[mask] = network_output.detach()[mask]
     return torch.mean(torch.abs((network_output - gt)) * mask)
-    # return torch.abs((network_output - gt)).mean()
+
 
 def l2_loss(network_output, gt):
     return ((network_output - gt) ** 2).mean()
 
+
 def gaussian(window_size, sigma):
     gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
     return gauss / gauss.sum()
+
 
 def create_window(window_size, channel):
     _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
     _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
     window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
     return window
+
 
 def ssim(img1, img2, window_size=11, size_average=True):
     channel = img1.size(-3)
@@ -125,6 +122,7 @@ def ssim(img1, img2, window_size=11, size_average=True):
     window = window.type_as(img1)
 
     return _ssim(img1, img2, window, window_size, channel, size_average)
+
 
 def _ssim(img1, img2, window, window_size, channel, size_average=True):
     mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
@@ -148,6 +146,7 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
     else:
         return ssim_map.mean(1).mean(1).mean(1)
 
+
 def ssim_mask(img1, img2, mask, window_size=11, size_average=True):
     channel = img1.size(-3)
     window = create_window(window_size, channel)
@@ -168,6 +167,7 @@ def ssim_mask(img1, img2, mask, window_size=11, size_average=True):
     return _ssim_mask(img1, img2, mask, window, window_size, channel, size_average)
 
 def _ssim_mask(img1, img2, mask, window, window_size, channel, size_average=True):
+    # TODO grow the mask by half the window size and then compute the metric!!!
     mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
     mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
 
