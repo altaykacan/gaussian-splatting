@@ -159,7 +159,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         R_w2c = torch.tensor(viewpoint_camera.R.T).cuda().to(torch.float32) # cameras save C2W rotation in their R attribute
         normal = (R_w2c @ normal.transpose(0, 1)).transpose(0, 1) # [num_points, 3], normals in camera coordinates
 
-        render_normal, _, _ = rasterizer(
+        # Removing entropx for now, it didn't help too much
+        render_normal, _ = rasterizer(
             means3D = means3D,
             means2D = means2D,
             shs = None,
@@ -174,7 +175,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     if return_opacity:
         density = torch.ones_like(means3D)
 
-        render_opacity, _, _ = rasterizer(
+        render_opacity, _ = rasterizer(
             means3D = means3D,
             means2D = means2D,
             shs = None,
