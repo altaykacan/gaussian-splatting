@@ -203,7 +203,7 @@ def storePly(path, xyz, rgb):
     ply_data.write(path)
 
 
-def readColmapSceneInfo(path, images, eval, use_mask=False, mask_path=None, llffhold=8):
+def readColmapSceneInfo(path, images, eval, use_mask=False, mask_dir=None, llffhold=8):
     """
     Reads relevant scene information from the source path `path`.
     Returns a `SceneInfo` object that contains information about the pointcloud,
@@ -228,7 +228,7 @@ def readColmapSceneInfo(path, images, eval, use_mask=False, mask_path=None, llff
         cam_intrinsics=cam_intrinsics,
         images_folder=os.path.join(path, reading_dir),
         use_mask=use_mask,
-        mask_path=mask_path,
+        mask_dir=mask_dir,
     )
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 

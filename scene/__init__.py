@@ -58,7 +58,7 @@ class Scene:
         # Loads colmap data if folder "sparse" is there
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](
-                args.source_path, args.images, args.eval, use_mask=args.use_mask, mask_path=args.mask_path, llffhold=args.llffhold
+                args.source_path, args.images, args.eval, use_mask=args.use_mask, mask_dir=args.mask_path, llffhold=args.llffhold
             )
 
         # Loads Blender data if this json is there (useful for NeRF datasets)
