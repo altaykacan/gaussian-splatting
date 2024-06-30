@@ -67,12 +67,12 @@ class ModelParams(ParamGroup):
         self.use_gt_depth = False  # flag to determine whether depth predictions are used to regularize the training
         self.use_log_loss_depth = False  # flag to determine whether the logarithm is used instead of the standard L1 loss for the depth regularization term
         self.use_tv_loss_depth = False  # flag to determine whether the total variation loss is used for the depths
-        self.gt_depth_path = "depths"  # path for depths, default looks for "depths" in the parent directory of image directory
+        self.gt_depth_path = "depths/arrays"  # path for depths, default looks for "depths" in the parent directory of image directory
         self.scale_depths = False  # flag to determine whether poses are scaled to the depth predictions (False), or whether the depth predictions are scaled to the poses (True)
         self.use_inverse_depth = False # flag to determine whether the inverse depths are used, when inverse depths are used, there is no maximum/minimum depth thresholding # TODO decide on whether we keep
         self.use_gt_normal = False  # flag to determine whether normal predictions/estimates are used to regularize the training
         self.use_tv_loss_normal = False  # flag to determine whether the total variation loss is used for the normals
-        self.gt_normal_path = "normals"  # path for normals, default looks for "normals" in the parent directory of image directory
+        self.gt_normal_path = "normals/arrays"  # path for normals, default looks for "normals" in the parent directory of image directory
         self.init_from_normals = False # flag to determine whether the 3D gaussians are initialized from normal values stored in the initial pointcloud
         self.use_constant_opacity_loss = False # flag to whether use an additional loss term to guide the gaussian opacities to be the same as `constant_opacity_value` as below
         self.init_opacity = 0.1 # value to initialize the gaussian opacities with, default is 0.1

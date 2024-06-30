@@ -440,8 +440,8 @@ def readDenseCloudCameras(
             mask = None
 
         if use_gt_depth:
-            if gt_depth_path == "depths":
-                depth_folder = os.path.join(os.path.dirname(images_folder), "depths")
+            if gt_depth_path == "depths/arrays":
+                depth_folder = os.path.join(os.path.dirname(images_folder), "depths/arrays")
             else:
                 depth_folder = gt_depth_path
 
@@ -457,8 +457,8 @@ def readDenseCloudCameras(
         if use_gt_normal:
             image_stem, extension = extr.name.split(".")
 
-            if gt_normal_path == "normals":
-                normal_folder = os.path.join(os.path.dirname(images_folder), "normals")
+            if gt_normal_path == "normals/arrays":
+                normal_folder = os.path.join(os.path.dirname(images_folder), "normals/arrays")
             else:
                 normal_folder = gt_normal_path
 
@@ -618,16 +618,12 @@ def readDenseCloudSceneInfoColmap(
     if gt_depth_path is not None:
         print(f"Reading images from {gt_depth_path}...")
     else:
-        print(
-            "No depth path specified, looking for folder 'depths' in the parent directory of the image folder..."
-        )
+        print("No depth path specified, looking for folder 'depths' in the parent directory of the image folder...")
 
     if gt_normal_path is not None:
         print(f"Reading images from {gt_normal_path}...")
     else:
-        print(
-            "No normal path specified, looking for folder 'normals' in the parent directory of the image folder..."
-        )
+        print("No normal path specified, looking for folder 'normals' in the parent directory of the image folder...")
 
     cam_infos_unsorted = readDenseCloudCameras(
         cam_extrinsics,
