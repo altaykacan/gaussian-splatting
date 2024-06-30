@@ -442,6 +442,7 @@ def training_report(
             if config["cameras"] and len(config["cameras"]) > 0:
                 l1_test = 0.0
                 psnr_test = 0.0
+                ssim_test = 0.0
                 for idx, viewpoint in enumerate(config["cameras"]):
                     # Adding custom tensorboard visualizations to show rendered depth and normal maps
                     render_results = renderFunc(
@@ -627,14 +628,17 @@ def training_report(
                         mask = viewpoint.mask.cuda()
                         l1_test += l1_loss(image, gt_image, mask).mean().double()
                         psnr_test += psnr_mask(image, gt_image, mask).mean().double()
+                        ssim_test += ssim_mask(image, gt_image, mask).double()
                     else:
                         l1_test += l1_loss(image, gt_image).mean().double()
                         psnr_test += psnr(image, gt_image).mean().double()
+                        ssim_test += ssim(image, gt_image).mean().double()
                 psnr_test /= len(config["cameras"])
                 l1_test /= len(config["cameras"])
+                ssim_test /= len(config["cameras"])
                 print(
-                    "\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(
-                        iteration, config["name"], l1_test, psnr_test
+                    "\n[ITER {}] Evaluating {}: L1 {} PSNR {} SSIM {}".format(
+                        iteration, config["name"], l1_test, psnr_test, ssim_test
                     )
                 )
                 if tb_writer:
@@ -643,6 +647,9 @@ def training_report(
                     )
                     tb_writer.add_scalar(
                         config["name"] + "/loss_viewpoint - psnr", psnr_test, iteration
+                    )
+                    tb_writer.add_scalar(
+                        config["name"] + "/loss_viewpoint - ssim", ssim_test, iteration
                     )
             torch.cuda.empty_cache()
 
@@ -669,7 +676,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=6009)
     parser.add_argument("--debug_from", type=int, default=-1)
     parser.add_argument("--detect_anomaly", action="store_true", default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 15_000, 30_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[1_000, 5_000, 7_000, 10_000, 15_000, 20_000, 25_000, 30_000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 15_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
