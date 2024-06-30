@@ -27,7 +27,7 @@ from scene import Scene, GaussianModel
 from utils.general_utils import safe_state
 import uuid
 from tqdm import tqdm
-from utils.image_utils import psnr
+from utils.image_utils import psnr, psnr_mask
 from utils.camera_utils import perturb_viewpoint
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
@@ -287,12 +287,13 @@ def training(
             ##########
             # Log and save
             ##########
+            l1_loss_for_val = l1_loss if not dataset.use_mask else l1_loss_mask
             training_report(
                 tb_writer,
                 iteration,
                 Ll1,
                 loss,
-                l1_loss,
+                l1_loss_for_val,
                 iter_start.elapsed_time(iter_end),
                 testing_iterations,
                 scene,
@@ -497,7 +498,6 @@ def training_report(
                             global_step=iteration,
                         )
 
-
                         # Renderings for perturbed viewpoints
                         perturbed_viewpoints = perturb_viewpoint(viewpoint, scene.cameras_extent)
                         for perturbed_name, perturbed_viewpoint in perturbed_viewpoints.items():
@@ -550,7 +550,6 @@ def training_report(
                                 pt_normal_norm[None],
                                 global_step=iteration,
                             )
-
 
                         # Save ground truth values and used masks only for the first iteration
                         if iteration == testing_iterations[0]:
@@ -624,8 +623,13 @@ def training_report(
                                     global_step=iteration,
                                 )
 
-                    l1_test += l1_loss(image, gt_image).mean().double()
-                    psnr_test += psnr(image, gt_image).mean().double()
+                    if viewpoint.mask is not None:
+                        mask = viewpoint.mask.cuda()
+                        l1_test += l1_loss(image, gt_image, mask).mean().double()
+                        psnr_test += psnr_mask(image, gt_image, mask).mean().double()
+                    else:
+                        l1_test += l1_loss(image, gt_image).mean().double()
+                        psnr_test += psnr(image, gt_image).mean().double()
                 psnr_test /= len(config["cameras"])
                 l1_test /= len(config["cameras"])
                 print(
