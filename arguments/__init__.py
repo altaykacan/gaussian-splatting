@@ -62,6 +62,7 @@ class ModelParams(ParamGroup):
         self.data_device = "cuda"
         self.eval = False
         self.llffhold = 8 # every llffhold'th image will be used as a test image
+        self.consecutive_val_block_size = -1 # uses this many images in the sequence after every training image as part of the test set, set as -1 to ignore, overwrites the llffhold option
         self.mask_path = "masks" # path to the directory where the precomputed masks are
         self.use_mask = False  # masking flag to remove pixels based off of a precomputed segmentation map to ignore certain pixels
         self.use_gt_depth = False  # flag to determine whether depth predictions are used to regularize the training

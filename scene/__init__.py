@@ -55,10 +55,13 @@ class Scene:
         else:
             print("The flag --scale_depths is not given, scaling the poses to match depth predictions and point cloud coordinates using the scale value from intrinsics.txt.")
 
+        if args.consecutive_val_block_size > -1:
+            print(f"You provided '--consecutive_val_block_size', all {args.consecutive_val_block_size} images after every training image will be used as validation data")
+
         # Loads colmap data if folder "sparse" is there
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](
-                args.source_path, args.images, args.eval, use_mask=args.use_mask, mask_dir=args.mask_path, llffhold=args.llffhold
+                args.source_path, args.images, args.eval, use_mask=args.use_mask, mask_dir=args.mask_path, llffhold=args.llffhold, consecutive_val_block_size=args.consecutive_val_block_size,
             )
 
         # Loads Blender data if this json is there (useful for NeRF datasets)
@@ -70,7 +73,7 @@ class Scene:
 
         # Custom callback to load dense pointclouds from orb-slam poses with EuRoC format
         elif os.path.exists(os.path.join(args.source_path, "slam_poses.txt")):
-            print("Found slam_poses.txt, assuming custom dense point clouds are being used with EuRoC format poses!")
+            print("Found slam_poses.txt, assuming custom dense point clouds are being used with TUM format poses!")
             scene_info = sceneLoadTypeCallbacks["DenseCloud"](
                 args.source_path,
                 args.images,
@@ -83,6 +86,7 @@ class Scene:
                 gt_normal_path=args.gt_normal_path,
                 use_gt_normal=args.use_gt_normal,
                 llffhold=args.llffhold,
+                consecutive_val_block_size=args.consecutive_val_block_size,
             )
 
         # Custom callback to load dense pointclouds with colmap poses as text or binary files
@@ -100,13 +104,15 @@ class Scene:
                 gt_normal_path=args.gt_normal_path,
                 use_gt_normal=args.use_gt_normal,
                 llffhold=args.llffhold,
+                consecutive_val_block_size=args.consecutive_val_block_size,
             )
-
         else:
             print(f"Couldn't recognize input file types! Please check your source path: {args.source_path}")
             raise ValueError
 
         self.scene_scale = scene_info.scene_scale
+
+        print(f"Number of train cameras: {len(scene_info.train_cameras)}, number of test cameras: {len(scene_info.test_cameras)}")
 
         if not self.loaded_iter:
             with open(scene_info.ply_path, "rb") as src_file, open(
@@ -123,6 +129,8 @@ class Scene:
                 json_cams.append(camera_to_JSON(id, cam))  # to save cameras.json
             with open(os.path.join(self.model_path, "cameras.json"), "w") as file:
                 json.dump(json_cams, file)
+            with open(os.path.join(self.model_path, "train_info.txt"), "w") as file:
+                file.write(f"Number of train cameras: {len(scene_info.train_cameras)}, number of test cameras: {len(scene_info.test_cameras)}")
 
         if shuffle:
             random.shuffle(

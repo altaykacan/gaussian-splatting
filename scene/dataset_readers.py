@@ -203,7 +203,7 @@ def storePly(path, xyz, rgb):
     ply_data.write(path)
 
 
-def readColmapSceneInfo(path, images, eval, use_mask=False, mask_dir=None, llffhold=8):
+def readColmapSceneInfo(path, images, eval, use_mask=False, mask_dir=None, llffhold=8, consecutive_val_block_size=-1,):
     """
     Reads relevant scene information from the source path `path`.
     Returns a `SceneInfo` object that contains information about the pointcloud,
@@ -233,8 +233,12 @@ def readColmapSceneInfo(path, images, eval, use_mask=False, mask_dir=None, llffh
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
     if eval:
-        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
-        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+        if consecutive_val_block_size > -1:
+            train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % (consecutive_val_block_size + 1) == 0]
+            test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % (consecutive_val_block_size + 1) != 0]
+        else:
+            train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+            test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
@@ -501,6 +505,7 @@ def readDenseCloudSceneInfo(
     scale_depths=False,
     use_gt_normal=False,
     gt_normal_path=None,
+    consecutive_val_block_size: int = -1,
 ):
     """
     Custom function implementation to read SLAM extrinsics and
@@ -553,8 +558,12 @@ def readDenseCloudSceneInfo(
         print("Using masking to compute the loss!")
 
     if eval:
-        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
-        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+        if consecutive_val_block_size > -1:
+            train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % (consecutive_val_block_size + 1) == 0]
+            test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % (consecutive_val_block_size + 1) != 0]
+        else:
+            train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+            test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
@@ -590,6 +599,7 @@ def readDenseCloudSceneInfoColmap(
     scale_depths=False,
     use_gt_normal=False,
     gt_normal_path=None,
+    consecutive_val_block_size: int=-1,
 ):
     """
     Custom function to read in custom dense pointclouds and
@@ -645,10 +655,13 @@ def readDenseCloudSceneInfoColmap(
     if use_mask:
         print("Using masking to compute the loss!")
 
-    # TODO decide whether we need this for our purposes
     if eval:
-        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
-        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+        if consecutive_val_block_size > -1:
+            train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % (consecutive_val_block_size + 1) == 0]
+            test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % (consecutive_val_block_size + 1) != 0]
+        else:
+            train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+            test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
