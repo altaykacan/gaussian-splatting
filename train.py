@@ -197,7 +197,7 @@ def training(
 
         # Normal regularization
         if dataset.use_gt_normal:
-            gt_normal = viewpoint_cam.gt_normal.cuda()
+            gt_normal = viewpoint_cam.gt_normal.float().cuda()
             normal = render_pkg["render_normal"]
 
             # Use depth mask to ignore very far away gaussians if the depth mask exists
