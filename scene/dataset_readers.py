@@ -547,7 +547,7 @@ def readDenseCloudSceneInfo(
         mask_dir=mask_dir,
         use_gt_depth=use_gt_depth,
         gt_depth_path=gt_depth_path,
-        scale_depth=scale_depths,
+        scale_depths=scale_depths,
         scale=scale,
         use_gt_normal=use_gt_normal,
         gt_normal_path=gt_normal_path,
