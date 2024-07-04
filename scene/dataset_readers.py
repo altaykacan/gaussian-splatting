@@ -515,7 +515,7 @@ def readDenseCloudSceneInfo(
     The implementation is based on `readColmapSceneInfo()` from the original repo
     here: https://github.com/graphdeco-inria/gaussian-splatting/blob/main/scene/dataset_readers.py
     """
-    cameras_extrinsic_file = os.path.join(path, "poses.txt")
+    cameras_extrinsic_file = os.path.join(path, "slam_poses.txt")
     cameras_intrinsic_file = os.path.join(path, "intrinsics.txt")
 
     cam_intrinsics, crop_box, scale = read_densecloud_intrinsics(cameras_intrinsic_file)
