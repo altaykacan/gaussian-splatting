@@ -175,6 +175,7 @@ def training(
                     gt_depth < opt.max_gt_depth, gt_depth > opt.min_gt_depth
                 )
 
+
             # Moveable object mask, pixels on non-moveable objects are True
             if mask is not None:
                 mask_depth = torch.logical_and(mask_depth, mask)
@@ -208,7 +209,7 @@ def training(
 
             # Moveable object mask, pixels on non-moveable objects are True
             if mask is not None:
-                mask_normal = torch.logical_and(mask_depth, mask)
+                mask_normal = torch.logical_and(mask_normal, mask)
 
             normal_loss = l1_loss_mask(normal, gt_normal, mask_normal)
 

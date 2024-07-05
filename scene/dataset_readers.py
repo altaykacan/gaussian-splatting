@@ -466,9 +466,7 @@ def readDenseCloudCameras(
             else:
                 normal_folder = gt_normal_path
 
-            normal_path = os.path.join(
-                normal_folder, image_stem + ".npy"
-            )  # saving as numpy arrays
+            normal_path = os.path.join(normal_folder, image_stem + ".npy")  # saved as numpy arrays
             normal = np.load(normal_path)
         else:
             normal = None
@@ -525,19 +523,18 @@ def readDenseCloudSceneInfo(
 
     reading_dir = "images" if images == None else images
 
-    if gt_depth_path is not None:
+    if use_gt_depth and gt_depth_path != "depths/arrays":
         print(f"Reading images from {gt_depth_path}...")
-    else:
+    elif use_gt_depth:
         print(
-            "No depth path specified, looking for folder 'depths' in the parent directory of the image folder..."
+            "No depth path specified, looking for folder 'depths/arrays' in the parent directory of the image folder..."
         )
 
-    if gt_normal_path is not None:
+    if use_gt_normal and gt_normal_path != "normals/arrays":
         print(f"Reading images from {gt_normal_path}...")
-    else:
-        print(
-            "No normal path specified, looking for folder 'normals' in the parent directory of the image folder..."
-        )
+    elif use_gt_normal:
+        print("No normal path specified, looking for folder 'normals/arrays' in the parent directory of the image folder...")
+
     cam_infos_unsorted = readDenseCloudCameras(
         cam_extrinsics,
         cam_intrinsics,
@@ -625,15 +622,18 @@ def readDenseCloudSceneInfoColmap(
 
     reading_dir = "images" if images == None else images
 
-    if gt_depth_path is not None:
+    if use_gt_depth and gt_depth_path != "depths/arrays":
         print(f"Reading images from {gt_depth_path}...")
-    else:
-        print("No depth path specified, looking for folder 'depths' in the parent directory of the image folder...")
+    elif use_gt_depth:
+        print(
+            "No depth path specified, looking for folder 'depths/arrays' in the parent directory of the image folder..."
+        )
 
-    if gt_normal_path is not None:
+    if use_gt_normal and gt_normal_path != "normals/arrays":
         print(f"Reading images from {gt_normal_path}...")
-    else:
-        print("No normal path specified, looking for folder 'normals' in the parent directory of the image folder...")
+    elif use_gt_normal:
+        print("No normal path specified, looking for folder 'normals/arrays' in the parent directory of the image folder...")
+
 
     cam_infos_unsorted = readDenseCloudCameras(
         cam_extrinsics,
