@@ -37,7 +37,7 @@ def opacity_entropy_loss(opacities: torch.Tensor):
 def disk_loss(scales: torch.Tensor):
     """
     Loss term that penalizes each (visible) gaussian if it's largest two scale
-    values are different from one another and if the smallest scale value is large
+    values are different from one and if the smallest scale value is large
 
     Scales has shape (num_visible_gaussians, 3)
     """
