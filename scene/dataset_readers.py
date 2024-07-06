@@ -131,7 +131,7 @@ def readColmapCameras(
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
-        image_name_split = os.path.basename(image_path).split(".")[0]
+        image_name_split = os.path.basename(image_path).split(".")
         if len(image_name_split) == 3: # combined colmap dataset
             image_name = image_name_split[0] + "." +  image_name_split[1]
         else:
@@ -432,7 +432,7 @@ def readDenseCloudCameras(
             ), "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
-        image_name_split = os.path.basename(image_path).split(".")[0]
+        image_name_split = os.path.basename(image_path).split(".")
         if len(image_name_split) == 3: # combined colmap dataset
             image_name = image_name_split[0] + "." +  image_name_split[1]
         else:
