@@ -131,7 +131,12 @@ def readColmapCameras(
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
-        image_name = os.path.basename(image_path).split(".")[0]
+        image_name_split = os.path.basename(image_path).split(".")[0]
+        if len(image_name_split) == 3: # combined colmap dataset
+            image_name = image_name_split[0] + "." +  image_name_split[1]
+        else:
+            image_name = image_name_split[0]
+
         image = Image.open(image_path)
         if use_mask:
             # Masks directory is expected to be in the same root directory as the images folder
@@ -427,7 +432,11 @@ def readDenseCloudCameras(
             ), "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
-        image_name = os.path.basename(image_path).split(".")[0]
+        image_name_split = os.path.basename(image_path).split(".")[0]
+        if len(image_name_split) == 3: # combined colmap dataset
+            image_name = image_name_split[0] + "." +  image_name_split[1]
+        else:
+            image_name = image_name_split[0]
 
         image = Image.open(image_path)
 
@@ -459,14 +468,12 @@ def readDenseCloudCameras(
             depth = None
 
         if use_gt_normal:
-            image_stem, extension = extr.name.split(".")
-
             if gt_normal_path == "normals/arrays":
                 normal_folder = os.path.join(os.path.dirname(images_folder), "normals/arrays")
             else:
                 normal_folder = gt_normal_path
 
-            normal_path = os.path.join(normal_folder, image_stem + ".npy")  # saved as numpy arrays
+            normal_path = os.path.join(normal_folder, extr.name.replace(".png", ".npy"))  # saved as numpy arrays
             normal = np.load(normal_path)
         else:
             normal = None
