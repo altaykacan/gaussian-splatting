@@ -44,9 +44,9 @@ def disk_loss(scales: torch.Tensor):
     top_two, _ = torch.topk(scales, k=2, dim=1)
     scale_min, _ = torch.min(scales, dim=1)
 
-    top_difference = top_two[:, 0] - top_two[:, 1]
+    top_difference = (top_two[:, 0] - 1)**2 + (top_two[:, 1] - 1)**2
 
-    return torch.mean(top_difference**2 + scale_min**2)
+    return torch.mean(top_difference + scale_min**2)
 
 
 def total_variation_loss(depth: torch.Tensor, mask: torch.Tensor=None):
