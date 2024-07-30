@@ -73,15 +73,20 @@ class ModelParams(ParamGroup):
         self.use_inverse_depth = False # flag to determine whether the inverse depths are used, when inverse depths are used, there is no maximum/minimum depth thresholding # TODO decide on whether we keep
         self.use_gt_normal = False  # flag to determine whether normal predictions/estimates are used to regularize the training
         self.use_tv_loss_normal = False  # flag to determine whether the total variation loss is used for the normals
+        self.use_dna = False # flag to determine whether direct normal alignment regularization is used instead of the rendered normals, expects --init_from_normals to be True
         self.gt_normal_path = "normals/arrays"  # path for normals, default looks for "normals" in the parent directory of image directory
         self.init_from_normals = False # flag to determine whether the 3D gaussians are initialized from normal values stored in the initial pointcloud
-        self.use_constant_opacity_loss = False # flag to whether use an additional loss term to guide the gaussian opacities to be the same as `constant_opacity_value` as below
+        self.use_constant_opacity_loss = False # flag to whether use an additional loss term to guide the gaussian opacities to be the same as `constant_opacity_value` as below for the road gaussians
         self.init_opacity = 0.1 # value to initialize the gaussian opacities with, default is 0.1
         self.minimum_opacity = 0.005 # minimum opacity value permitted that is used in pruning of gaussians, default is 0.005
         self.use_opacity_entropy_regularization = False # flag to whether use an entropy regularization term for the loss that pushes opacities of visible gaussians to either 0 or 1 (binary distribution)
         self.use_entropy_regularization = False # flag to whether use an entropy regularization term that minimizes the per-pixel distribution of the alpha values of the gaussians
         self.use_disk_loss = False # flag to whether use regularization term that pushes gaussians to be disks (2 scales equal, 1 scale much smaller)
         self.use_opacity_entropy_loss = False # flag to whether use a regularization term that minimizes the opacity distribution of the visible gaussians
+        self.reset_normals = False # flag to whether reset the rotations of the gaussians that belong to the road
+        self.dont_prune_road = False # flag to whether ignore gaussians belonging to the road for pruning
+        self.use_gt_road_mask = False # flag to whether use a precomputed road segmentation mask to guide the optimization
+        self.gt_road_mask_path="masks_road"
 
         super().__init__(parser, "Loading Parameters", sentinel)
 
@@ -131,6 +136,11 @@ class OptimizationParams(ParamGroup):
         self.lambda_opacity_entropy = 0.1
         self.apply_entropy_losses_from_iter = 0
         self.apply_entropy_losses_until_iter = self.iterations
+        self.apply_dna_from_iter = 0
+        self.apply_dna_until_iter = self.iterations
+        self.dna_zero_grad = False
+        self.reset_normals_interval = 1000
+        self.lambda_road_mask = 0.2 # Multiplicative factor for road mask loss
         super().__init__(parser, "Optimization Parameters")
 
 

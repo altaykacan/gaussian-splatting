@@ -75,6 +75,12 @@ def loadCam(args, id, cam_info, resolution_scale):
     else:
         gt_normal = None
 
+    if cam_info.gt_road_mask is not None:
+        gt_road_mask = cam_info.gt_road_mask
+        gt_road_mask = torch.from_numpy(gt_road_mask)
+    else:
+        gt_road_mask = None
+
     return Camera(
         colmap_id=cam_info.uid,
         R=cam_info.R,
@@ -89,6 +95,7 @@ def loadCam(args, id, cam_info, resolution_scale):
         mask=mask,
         gt_depth=gt_depth,
         gt_normal=gt_normal,
+        gt_road_mask=gt_road_mask,
     )
 
 

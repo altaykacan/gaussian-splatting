@@ -53,7 +53,7 @@ class CameraInfo(NamedTuple):
     mask: np.array = None  # optional mask for loss computation
     gt_depth: np.array = None  # optional ground truth depth for depth regularization
     gt_normal: np.array = None  # optional ground truth normals for normal regularization
-
+    gt_road_mask: np.array = None # optional ground truth for the road segmentation mask for road regularization
 
 
 class SceneInfo(NamedTuple):
@@ -97,6 +97,12 @@ def readColmapCameras(
         images_folder,
         use_mask=False,
         mask_dir=None,
+        use_gt_depth=False,
+        gt_depth_path=None,
+        scale_depths=False,
+        scale=1.0,
+        use_gt_normal=False,
+        gt_normal_path=None,
         ):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
@@ -112,7 +118,7 @@ def readColmapCameras(
 
         uid = intr.id
 
-        # qvec has T_CW (W2C) from colmap, but we save the rotation matrix for T_WC (C2W)
+        # qvec has T_CW (world --> cam) from colmap, but we save the rotation matrix for T_WC (cam --> world)
         R = np.transpose(qvec2rotmat(extr.qvec))
 
         # This is T_CW's translation component from colmap
@@ -146,6 +152,32 @@ def readColmapCameras(
         else:
             mask = None
 
+        if use_gt_depth:
+            if gt_depth_path == "depths/arrays":
+                depth_folder = os.path.join(os.path.dirname(images_folder), "depths/arrays")
+            else:
+                depth_folder = gt_depth_path
+
+            depth_path = os.path.join(depth_folder, extr.name.replace(".png", ".npy"))  # saved as numpy arrays
+            depth = np.load(depth_path)
+
+            # If we do not multiply the poses with the scale, we need to divide the depths by it
+            if scale_depths:
+                depth = depth / scale
+        else:
+            depth = None
+
+        if use_gt_normal:
+            if gt_normal_path == "normals/arrays":
+                normal_folder = os.path.join(os.path.dirname(images_folder), "normals/arrays")
+            else:
+                normal_folder = gt_normal_path
+
+            normal_path = os.path.join(normal_folder, extr.name.replace(".png", ".npy"))  # saved as numpy arrays
+            normal = np.load(normal_path)
+        else:
+            normal = None
+
         cam_info = CameraInfo(
             uid=uid,
             R=R,
@@ -158,6 +190,8 @@ def readColmapCameras(
             width=width,
             height=height,
             mask=mask,
+            gt_depth=depth,
+            gt_normal=normal,
         )
         cam_infos.append(cam_info)
     sys.stdout.write("\n")
@@ -171,15 +205,17 @@ def fetchPly(path):
     colors = np.vstack([vertices["red"], vertices["green"], vertices["blue"]]).T / 255.0
 
     try:
-        normals = np.vstack(
-            [vertices["nx"], vertices["ny"], vertices["nz"]]
-        ).T  # for our case the normals are all 0's -altay
+        normals = np.vstack([vertices["nx"], vertices["ny"], vertices["nz"]]).T
     except Exception as E:
-        print(
-            f"Encountered exception `{E}` when trying to load normals. Setting all zeros for the normals."
-        )
+        print(f"Encountered exception when trying to load normals. Setting all zeros for the normals.")
         normals = np.zeros_like(positions)
-    return BasicPointCloud(points=positions, colors=colors, normals=normals)
+
+    try:
+        is_road = np.vstack([vertices["is_road"]]).T
+    except Exception as E:
+        print(f"Encountered exception when trying to load semantic information about the road. Not using is_road flags for individual Gaussians.")
+        is_road = None
+    return BasicPointCloud(points=positions, colors=colors, normals=normals, is_road=is_road)
 
 
 def storePly(path, xyz, rgb):
@@ -208,7 +244,21 @@ def storePly(path, xyz, rgb):
     ply_data.write(path)
 
 
-def readColmapSceneInfo(path, images, eval, use_mask=False, mask_dir=None, llffhold=8, consecutive_val_block_size=-1,):
+def readColmapSceneInfo(
+        path,
+        images,
+        eval,
+        use_mask=False,
+        mask_dir=None,
+        llffhold=8,
+        use_gt_depth=False,
+        gt_depth_path=None,
+        scale_depths=False,
+        scale=1.0,
+        use_gt_normal=False,
+        gt_normal_path=None,
+        consecutive_val_block_size=-1,
+        ):
     """
     Reads relevant scene information from the source path `path`.
     Returns a `SceneInfo` object that contains information about the pointcloud,
@@ -234,6 +284,12 @@ def readColmapSceneInfo(path, images, eval, use_mask=False, mask_dir=None, llffh
         images_folder=os.path.join(path, reading_dir),
         use_mask=use_mask,
         mask_dir=mask_dir,
+        use_gt_depth=use_gt_depth,
+        gt_depth_path=gt_depth_path,
+        scale_depths=scale_depths,
+        scale=scale,
+        use_gt_normal=use_gt_normal,
+        gt_normal_path=gt_normal_path,
     )
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
@@ -393,6 +449,8 @@ def readDenseCloudCameras(
     scale=1.0,
     use_gt_normal=False,
     gt_normal_path=None,
+    use_gt_road_mask=False,
+    gt_road_mask_path=None,
 ):
     """
     A modified version of `readColmapCameras()` that does image preprocessing
@@ -427,9 +485,7 @@ def readDenseCloudCameras(
             FovY = focal2fov(focal_length_y, height)
             FovX = focal2fov(focal_length_x, width)
         else:
-            assert (
-                False
-            ), "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
+            assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name_split = os.path.basename(image_path).split(".")
@@ -478,6 +534,18 @@ def readDenseCloudCameras(
         else:
             normal = None
 
+        if use_gt_road_mask:
+            if gt_road_mask_path == "masks_road":
+                road_mask_folder = os.path.join(os.path.dirname(images_folder), "masks_road")
+            else:
+                road_mask_folder = gt_road_mask_path
+
+            road_mask_path = os.path.join(road_mask_folder, extr.name + ".png")
+            road_mask = Image.open(road_mask_path)
+            road_mask = np.array(road_mask, dtype=bool)
+        else:
+            road_mask = None
+
         cam_info = CameraInfo(
             uid=uid,
             R=R,
@@ -492,6 +560,7 @@ def readDenseCloudCameras(
             mask=mask,
             gt_depth=depth,
             gt_normal=normal,
+            gt_road_mask=road_mask,
         )
         cam_infos.append(cam_info)
     sys.stdout.write("\n")
@@ -510,6 +579,8 @@ def readDenseCloudSceneInfo(
     scale_depths=False,
     use_gt_normal=False,
     gt_normal_path=None,
+    use_gt_road_mask=False,
+    gt_road_mask_path=None,
     consecutive_val_block_size: int = -1,
 ):
     """
@@ -531,16 +602,21 @@ def readDenseCloudSceneInfo(
     reading_dir = "images" if images == None else images
 
     if use_gt_depth and gt_depth_path != "depths/arrays":
-        print(f"Reading images from {gt_depth_path}...")
+        print(f"Reading depths from {gt_depth_path}...")
     elif use_gt_depth:
         print(
             "No depth path specified, looking for folder 'depths/arrays' in the parent directory of the image folder..."
         )
 
     if use_gt_normal and gt_normal_path != "normals/arrays":
-        print(f"Reading images from {gt_normal_path}...")
+        print(f"Reading normals from {gt_normal_path}...")
     elif use_gt_normal:
         print("No normal path specified, looking for folder 'normals/arrays' in the parent directory of the image folder...")
+
+    if use_gt_road_mask and gt_road_mask_path != "masks_road":
+        print(f"Reading road masks from {gt_road_mask_path}...")
+    elif use_gt_normal:
+        print("No road mask path specified, looking for folder 'masks_road' in the parent directory of the image folder...")
 
     cam_infos_unsorted = readDenseCloudCameras(
         cam_extrinsics,
@@ -555,6 +631,8 @@ def readDenseCloudSceneInfo(
         scale=scale,
         use_gt_normal=use_gt_normal,
         gt_normal_path=gt_normal_path,
+        use_gt_road_mask=use_gt_road_mask,
+        gt_road_mask_path=gt_road_mask_path,
     )
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
@@ -603,6 +681,8 @@ def readDenseCloudSceneInfoColmap(
     scale_depths=False,
     use_gt_normal=False,
     gt_normal_path=None,
+    use_gt_road_mask=False,
+    gt_road_mask_path=None,
     consecutive_val_block_size: int=-1,
 ):
     """
@@ -630,16 +710,21 @@ def readDenseCloudSceneInfoColmap(
     reading_dir = "images" if images == None else images
 
     if use_gt_depth and gt_depth_path != "depths/arrays":
-        print(f"Reading images from {gt_depth_path}...")
+        print(f"Reading depths from {gt_depth_path}...")
     elif use_gt_depth:
         print(
             "No depth path specified, looking for folder 'depths/arrays' in the parent directory of the image folder..."
         )
 
     if use_gt_normal and gt_normal_path != "normals/arrays":
-        print(f"Reading images from {gt_normal_path}...")
+        print(f"Reading normals from {gt_normal_path}...")
     elif use_gt_normal:
         print("No normal path specified, looking for folder 'normals/arrays' in the parent directory of the image folder...")
+
+    if use_gt_road_mask and gt_road_mask_path != "masks_road":
+        print(f"Reading road masks from {gt_road_mask_path}...")
+    elif use_gt_normal:
+        print("No road mask path specified, looking for folder 'masks_road' in the parent directory of the image folder...")
 
 
     cam_infos_unsorted = readDenseCloudCameras(
@@ -655,6 +740,8 @@ def readDenseCloudSceneInfoColmap(
         scale=scale,
         use_gt_normal=use_gt_normal,
         gt_normal_path=gt_normal_path,
+        use_gt_road_mask=use_gt_road_mask,
+        gt_road_mask_path=gt_road_mask_path,
     )
 
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)

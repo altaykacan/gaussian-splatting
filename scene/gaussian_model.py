@@ -19,7 +19,7 @@ from utils.system_utils import mkdir_p
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import RGB2SH
 from utils.graphics_utils import BasicPointCloud
-from utils.general_utils import strip_symmetric, build_scaling_rotation, rotate_vector_to_vector
+from utils.general_utils import strip_symmetric, build_scaling_rotation, rotate_vector_to_vector, build_rotation
 
 from scipy.spatial.transform import Rotation
 from simple_knn._C import distCUDA2
@@ -67,6 +67,8 @@ class GaussianModel:
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
+        self._gt_normals = torch.empty(0)
+        self._is_road = torch.empty(0)
         self.setup_functions()
 
     def capture(self):
@@ -125,6 +127,32 @@ class GaussianModel:
     def get_opacity(self):
         return self.opacity_activation(self._opacity)
 
+    @property
+    def get_gt_normals(self):
+        return self._gt_normals
+
+    @property
+    def get_is_road(self):
+        return self._is_road
+
+    @property
+    def get_normals(self) -> torch.Tensor:
+        """
+        Returns the surface normals of all Gaussians by assuming they are disks
+        and choosing the smallest axis as the normal direction. Normals are
+        in world coordinates.
+        """
+        rotations_mat = build_rotation(self.get_rotation) # [num_points, 3, 3], converts quaternions to rotation matrix
+        scales = self.get_scaling # [num_points, 3]
+        min_scales = torch.argmin(scales, dim=1) # [num_points], each entry has the index of the smallest dimension
+        indices = torch.arange(min_scales.shape[0]) # [num_points]
+        normals = rotations_mat[indices, :, min_scales] # take the corresponding columns of the rotation matrices for each 3D gaussian
+
+        # Normalize
+        normals = normals / torch.linalg.norm(normals, dim=1).reshape(-1, 1)
+
+        return normals
+
     def get_covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
 
@@ -143,18 +171,37 @@ class GaussianModel:
         num_points = fused_point_cloud.shape[0]
         print("Number of points at initialisation : ", num_points)
 
-        # Issue: https://github.com/graphdeco-inria/gaussian-splatting/issues/99
+        # Issue: https://github.com/graphdeco-inria/gaussian-splatting/issues/99,
+        # has to do with CUDA versions and compiling on different gpus,
+        # delete the build folder and compile again for current gpu
         dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001) # this is the line that causes memory allocation errors with certain CUDA versions
-
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3) # log is the parametrization for scales, the scale_activation undoes that
 
+        # Attribute for keeping track of which Gaussians belong to the road
+        is_road = getattr(pcd, "is_road", None)
+        if is_road is not None:
+            is_road = torch.tensor(np.asarray(is_road)).bool().cuda()
+            print("Read semantic information about Gaussians belonging to the road successfully!")
+
         # Code heavily inspired from DN-splatter's DNSplatterModel.populate_modules() method
-        if init_from_normals:
-            print("Initializing normals,  this might take some time...")
+        try:
             normals = torch.tensor(pcd.normals).float().cuda()
 
-            assert torch.not_equal(normals, torch.zeros_like(normals)).all(), "The initial pointcloud does not contain normal information or it was not possible to read them, please check it!"
+            # Set rows that are all zero to [1, 0, 0]
+            zero_normals = (normals == torch.tensor([0.0, 0.0, 0.0]).cuda()) # [num_points, 3], boolean tensor
+            normals[zero_normals[:, 0], 0] = 1.0
 
+            # Renormalize
+            normals = (normals / torch.linalg.norm(normals, dim=1).reshape(-1, 1))
+            assert torch.not_equal(normals.sum(dim=1), 0.0).all(), "The initial pointcloud does not contain normal information or it was not possible to read them, please check it!"
+            gt_normals = normals.clone()
+
+        except Exception as E:
+            print("Can't read normals from point cloud, ignoring ground truth normals")
+            gt_normals = None
+
+        if init_from_normals:
+            print("Initializing normals, this might take some time...")
             scales[:, 2] = torch.log((dist2 / 10)) # initializing the scale to be smaller in z-direction (scales are saved in log scale)
             z_vector = torch.tensor([0, 0, 1], dtype=torch.float).repeat(num_points, 1).cuda()
 
@@ -162,18 +209,16 @@ class GaussianModel:
             rotation_matrix = rotate_vector_to_vector(z_vector, normals) # [num_points, 3, 3]
             rotation_matrix = rotation_matrix.cpu() # scipy needs numpy arrays, need to put on cpu
             quats = Rotation.from_matrix(rotation_matrix).as_quat() # [num_points, 4]
-
             quats = torch.from_numpy(quats).float().cuda() # bring back to gpu and convert to float
 
             # Scipy uses [x,y,z,w] format but we need [w,x,y,z]
             rots = torch.cat((quats[:, 3:], quats[:,0:3]), dim=1)
 
             print("Initialized normals!")
-
         else:
             print("Initial normals are not provided, settings them all to a constant value")
             rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
-            rots[:, 0] = 1
+            rots[:, 0] = 1 # setting the w element of the quaternion to 0
 
         opacities = inverse_sigmoid(init_opacity * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
 
@@ -184,6 +229,8 @@ class GaussianModel:
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+        self._gt_normals = gt_normals
+        self._is_road = is_road
 
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
@@ -247,10 +294,53 @@ class GaussianModel:
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
-    def reset_opacity(self):
+    def reset_opacity(self, ignore_mask=None):
         opacities_new = inverse_sigmoid(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*0.01))
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"]
+
+    def reset_normals(self, mask=None) -> None:
+        """
+        Resets the rotations of the gaussians specified by `mask` to match the
+        ground truth normals that were read-in by `create_from_pcd()`.
+        The normal directions are assumed to be the scale axis with the smallest
+        scale value.
+        """
+        if mask is None:
+            return None
+
+        gt_normals = self._gt_normals[mask]
+        num_points = gt_normals.shape[0]
+
+        # Get new quaternions that correspond to the ground truth normals
+        z_vector = torch.tensor([0, 0, 1], dtype=torch.float).repeat(num_points, 1).cuda()
+
+        # This a rotation that rotates the z vectors in object frame to match the normal directions of each gaussian in world frame
+        rotation_matrix = rotate_vector_to_vector(z_vector, gt_normals) # [num_points, 3, 3]
+        rotation_matrix = rotation_matrix.cpu() # scipy needs numpy arrays, need to put on cpu
+        quats = Rotation.from_matrix(rotation_matrix).as_quat() # [num_points, 4]
+        quats = torch.from_numpy(quats).float().cuda() # bring back to gpu and convert to float
+
+        # Scipy uses [x,y,z,w] format but we need [w,x,y,z]
+        rots = torch.cat((quats[:, 3:], quats[:,0:3]), dim=1)
+
+        # Set the rotation values also in the optimizer
+        rotation_new = self._rotation.data.clone() # nn.Parameter so we need to access data attribute
+        rotation_new[mask] = rots
+        optimizable_tensors = self.replace_tensor_to_optimizer(rotation_new, "rotation")
+        self._rotation = optimizable_tensors["rotation"]
+
+        # # Set the mean scale for the first two axes and divide it by 10 for the last axis to reinforce disk assumption
+        # scales_new = self._scaling.data.clone()
+        # scales_metric = self.scaling_activation(scales_new)
+        # mean_scales = torch.mean(scales_metric[mask], dim=1) # [num_points]
+        # disk_scales = torch.stack((mean_scales, mean_scales, mean_scales / 10), dim=1)
+        # disk_scales = self.scaling_inverse_activation(disk_scales)
+        # scales_new[mask] = disk_scales
+        # optimizable_tensors = self.replace_tensor_to_optimizer(scales_new, "scaling")
+        # self._scaling = optimizable_tensors["scaling"]
+
+        return None
 
     def load_ply(self, path):
         plydata = PlyData.read(path)
@@ -341,6 +431,12 @@ class GaussianModel:
 
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
 
+        if getattr(self, "_gt_normals", None) is not None:
+            self._gt_normals = self._gt_normals[valid_points_mask]
+
+        if getattr(self, "_is_road", None) is not None:
+            self._is_road = self._is_road[valid_points_mask]
+
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
 
@@ -348,14 +444,14 @@ class GaussianModel:
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
             assert len(group["params"]) == 1
-            extension_tensor = tensors_dict[group["name"]]
-            stored_state = self.optimizer.state.get(group['params'][0], None)
+            extension_tensor = tensors_dict[group["name"]] # tensor to add
+            stored_state = self.optimizer.state.get(group['params'][0], None) # the keys are the tensors
             if stored_state is not None:
 
                 stored_state["exp_avg"] = torch.cat((stored_state["exp_avg"], torch.zeros_like(extension_tensor)), dim=0)
                 stored_state["exp_avg_sq"] = torch.cat((stored_state["exp_avg_sq"], torch.zeros_like(extension_tensor)), dim=0)
 
-                del self.optimizer.state[group['params'][0]]
+                del self.optimizer.state[group['params'][0]] # list with single element which is the current tensor
                 group["params"][0] = nn.Parameter(torch.cat((group["params"][0], extension_tensor), dim=0).requires_grad_(True))
                 self.optimizer.state[group['params'][0]] = stored_state
 
@@ -366,7 +462,7 @@ class GaussianModel:
 
         return optimizable_tensors
 
-    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, selected_pts_mask=None):
+    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, selected_pts_mask=None, new_gt_normals=None, new_is_road=None):
         d = {"xyz": new_xyz,
         "f_dc": new_features_dc,
         "f_rest": new_features_rest,
@@ -385,6 +481,13 @@ class GaussianModel:
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+
+        # Add the new gt normals and road flags if they exist
+        if new_gt_normals is not None:
+            self._gt_normals = torch.cat((self._gt_normals, new_gt_normals), dim=0)
+
+        if new_is_road is not None:
+            self._is_road = torch.cat((self._is_road, new_is_road), dim=0)
 
     def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
         n_init_points = self.get_xyz.shape[0]
@@ -406,7 +509,26 @@ class GaussianModel:
         new_features_rest = self._features_rest[selected_pts_mask].repeat(N,1,1)
         new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
 
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation)
+        if getattr(self, "_gt_normals", None) is not None:
+            new_gt_normals = self._gt_normals[selected_pts_mask].repeat(N, 1)
+        else:
+            new_gt_normals = None
+
+        if getattr(self, "_is_road", None) is not None:
+            new_is_road = self._is_road[selected_pts_mask].repeat(N, 1)
+        else:
+            new_is_road = None
+
+        self.densification_postfix(
+            new_xyz,
+            new_features_dc,
+            new_features_rest,
+            new_opacity,
+            new_scaling,
+            new_rotation,
+            new_gt_normals=new_gt_normals,
+            new_is_road=new_is_road,
+            )
 
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
@@ -424,9 +546,28 @@ class GaussianModel:
         new_scaling = self._scaling[selected_pts_mask]
         new_rotation = self._rotation[selected_pts_mask]
 
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation)
+        if getattr(self, "_gt_normals", None) is not None:
+            new_gt_normals = self._gt_normals[selected_pts_mask]
+        else:
+            new_gt_normals = None
 
-    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size):
+        if getattr(self, "_is_road", None) is not None:
+            new_is_road = self._is_road[selected_pts_mask]
+        else:
+            new_is_road = None
+
+        self.densification_postfix(
+            new_xyz,
+            new_features_dc,
+            new_features_rest,
+            new_opacities,
+            new_scaling,
+            new_rotation,
+            new_gt_normals=new_gt_normals,
+            new_is_road=new_is_road,
+            )
+
+    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, dont_prune_road=False):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
@@ -443,6 +584,10 @@ class GaussianModel:
                 big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * 10
 
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
+
+        if dont_prune_road:
+            no_prune_mask = self.get_is_road.squeeze()
+            prune_mask = prune_mask & torch.logical_not(no_prune_mask)
         self.prune_points(prune_mask)
 
         torch.cuda.empty_cache()

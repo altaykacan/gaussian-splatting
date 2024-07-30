@@ -60,8 +60,21 @@ class Scene:
 
         # Loads colmap data if folder "sparse" is there
         if os.path.exists(os.path.join(args.source_path, "sparse")):
+            # TODO depth reg doesnt work for pure colmap datasets yet, we need to pass in 'scale'
+            # for our dense clouds we keep the scale information in intrinsics.txt
             scene_info = sceneLoadTypeCallbacks["Colmap"](
-                args.source_path, args.images, args.eval, use_mask=args.use_mask, mask_dir=args.mask_path, llffhold=args.llffhold, consecutive_val_block_size=args.consecutive_val_block_size,
+                args.source_path,
+                args.images,
+                args.eval,
+                use_mask=args.use_mask,
+                mask_dir=args.mask_path,
+                use_gt_depth=args.use_gt_depth,
+                gt_depth_path=args.gt_depth_path,
+                scale_depths=args.scale_depths,
+                gt_normal_path=args.gt_normal_path,
+                use_gt_normal=args.use_gt_normal,
+                llffhold=args.llffhold,
+                consecutive_val_block_size=args.consecutive_val_block_size,
             )
 
         # Loads Blender data if this json is there (useful for NeRF datasets)
@@ -85,6 +98,8 @@ class Scene:
                 scale_depths=args.scale_depths,
                 gt_normal_path=args.gt_normal_path,
                 use_gt_normal=args.use_gt_normal,
+                use_gt_road_mask=args.use_gt_road_mask,
+                gt_road_mask_path=args.gt_road_mask_path,
                 llffhold=args.llffhold,
                 consecutive_val_block_size=args.consecutive_val_block_size,
             )
@@ -103,6 +118,8 @@ class Scene:
                 scale_depths=args.scale_depths,
                 gt_normal_path=args.gt_normal_path,
                 use_gt_normal=args.use_gt_normal,
+                use_gt_road_mask=args.use_gt_road_mask,
+                gt_road_mask_path=args.gt_road_mask_path,
                 llffhold=args.llffhold,
                 consecutive_val_block_size=args.consecutive_val_block_size,
             )

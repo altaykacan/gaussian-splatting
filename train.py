@@ -20,6 +20,7 @@ from utils.loss_utils import (
     log_depth_loss,
     constant_opacity_loss,
     disk_loss,
+    dna_loss,
 )
 from gaussian_renderer import render, network_gui
 import sys
@@ -50,11 +51,14 @@ def training(
     checkpoint,
     debug_from,
 ):
+    ##########
+    #  Setup
+    ##########
     # dataset, opt, and pipe are all GroupParams objects, which are empty classes with key-value pairs for the respective settings
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree)
-    scene = Scene(dataset, gaussians)  # changed -altay
+    scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
@@ -75,6 +79,11 @@ def training(
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
+    prev_dna_loss = None
+
+    ##########
+    # Training loop
+    ##########
     for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
             network_gui.try_connect()
@@ -90,9 +99,7 @@ def training(
                     scaling_modifer,
                 ) = network_gui.receive()
                 if custom_cam != None:
-                    net_image = render(
-                        custom_cam, gaussians, pipe, background, scaling_modifer
-                    )["render"]
+                    net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
                     net_image_bytes = memoryview(
                         (torch.clamp(net_image, min=0, max=1.0) * 255)
                         .byte()
@@ -102,9 +109,7 @@ def training(
                         .numpy()
                     )
                 network_gui.send(net_image_bytes, dataset.source_path)
-                if do_training and (
-                    (iteration < int(opt.iterations)) or not keep_alive
-                ):
+                if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
                     break
             except Exception as e:
                 network_gui.conn = None
@@ -130,6 +135,7 @@ def training(
 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
+        # TODO maybe can add masking here (to the cuda function) as well
         render_pkg = render(
             viewpoint_cam,
             gaussians,
@@ -137,7 +143,8 @@ def training(
             bg,
             return_depth=dataset.use_gt_depth,
             return_normal=dataset.use_gt_normal,
-        )  # TODO maybe can add masking here (to the cuda function) as well -altay
+            return_is_road=dataset.use_gt_road_mask,
+        )
 
         image, viewspace_point_tensor, visibility_filter, radii = (
             render_pkg["render"],
@@ -151,6 +158,7 @@ def training(
         ##########
         gt_image = viewpoint_cam.original_image.cuda()
 
+        # Photometric loss
         if dataset.use_mask:
             mask = viewpoint_cam.mask.cuda()
             Ll1 = l1_loss_mask(image, gt_image, mask)
@@ -166,17 +174,14 @@ def training(
             depth = render_pkg["render_depth"]
 
             if dataset.use_inverse_depth:
-                # Trying out inverse depth
+                # Inverse depth does not require masking
                 mask_depth = torch.ones_like(depth)
                 depth = 1 / (depth + 0.000001)
-                gt_depth = (1 / (gt_depth + 0.000001))
+                gt_depth = 1 / (gt_depth + 0.000001)
             else:
-                mask_depth = torch.logical_and(
-                    gt_depth < opt.max_gt_depth, gt_depth > opt.min_gt_depth
-                )
+                mask_depth = torch.logical_and(gt_depth < opt.max_gt_depth, gt_depth > opt.min_gt_depth)
 
-
-            # Moveable object mask, pixels on non-moveable objects are True
+            # Moveable object mask, pixels on non-movable objects are True
             if mask is not None:
                 mask_depth = torch.logical_and(mask_depth, mask)
 
@@ -197,30 +202,35 @@ def training(
             tv_loss_depth = torch.tensor([0.0]).cuda()
 
         # Normal regularization
-        if dataset.use_gt_normal:
+        if dataset.use_gt_normal and not dataset.use_dna:
             gt_normal = viewpoint_cam.gt_normal.float().cuda()
             normal = render_pkg["render_normal"]
 
-            # Use depth mask to ignore very far away gaussians if the depth mask exists
-            if mask_depth is not None:
-                mask_normal = mask_depth
-            else:
-                mask_normal = torch.ones_like(gt_normal)
-
-            # Moveable object mask, pixels on non-moveable objects are True
+            # Moveable object mask, pixels on non-movable objects are True
             if mask is not None:
-                mask_normal = torch.logical_and(mask_normal, mask)
+                mask_normal = mask
 
             normal_loss = l1_loss_mask(normal, gt_normal, mask_normal)
-
-            # Total variation loss to enforce smoothness
-            if dataset.use_tv_loss_normal:
-                tv_loss_normal = total_variation_loss(normal, mask_normal)
-            else:
-                tv_loss_normal = torch.Tensor([0.0]).cuda()
-
         else:
             normal_loss = torch.Tensor([0.0]).cuda()
+            tv_loss_normal = torch.Tensor([0.0]).cuda()
+
+        # Direct normal alignment
+        if dataset.use_gt_normal and dataset.use_dna and (iteration > opt.apply_dna_from_iter - 1) and (iteration < opt.apply_dna_until_iter + 1):
+            # Mask for the collection of Gaussians, not the renderings
+            dna_mask = visibility_filter & gaussians.get_is_road.squeeze()
+            # dna_mask = gaussians.get_is_road.squeeze()
+            dna_loss_term = dna_loss(gaussians, dna_mask)
+        else:
+            dna_loss_term = torch.Tensor([0.0]).cuda()
+
+        # Total variation loss to enforce smoothness
+        if dataset.use_gt_normal and dataset.use_tv_loss_normal:
+            normal = render_pkg["render_normal"]
+            if mask is not None:
+                mask_normal = mask
+            tv_loss_normal = total_variation_loss(normal, mask_normal)
+        else:
             tv_loss_normal = torch.Tensor([0.0]).cuda()
 
         # # Alpha entropy regularization
@@ -231,35 +241,62 @@ def training(
         #     gt_entropy = entropy.clone().cuda()
 
         # entropy_loss = l1_loss(entropy, gt_entropy)
-        entropy_loss = 0.0 # ignoring entropy for now
 
         # Constant opacity term
         if dataset.use_constant_opacity_loss:
-            opacities = gaussians.get_opacity[visibility_filter]
-            opacity_target = opt.opacity_target
+            opacity_mask = visibility_filter & gaussians.get_is_road.squeeze()
+            opacities = gaussians.get_opacity[opacity_mask]
 
-            opacity_loss = constant_opacity_loss(opacities, opacity_target)
+            opacity_loss = constant_opacity_loss(opacities, opt.opacity_target)
         else:
             opacity_loss = torch.Tensor([0.0]).cuda()
 
         # Disk loss
         if dataset.use_disk_loss:
-            scales = gaussians.get_scaling[visibility_filter]
+            scales = gaussians.get_scaling[visibility_filter & gaussians.get_is_road.squeeze()]
             disk_loss_term = disk_loss(scales)
         else:
             disk_loss_term = torch.Tensor([0.0]).cuda()
+
+        # Road loss
+        if dataset.use_gt_road_mask:
+            gt_road_mask = viewpoint_cam.gt_road_mask.cuda().float()
+            road_mask = render_pkg["render_is_road"].float()
+
+            # Last 'mask' makes the loss ignore pixels on movable objects
+            road_loss = l1_loss_mask(road_mask, gt_road_mask, mask)
+        else:
+            road_loss = torch.Tensor([0.0]).cuda()
 
         loss = (
             (1.0 - opt.lambda_dssim) * Ll1
             + opt.lambda_dssim * ssim_loss
             + opt.lambda_depth * (depth_loss + opt.lambda_tv_depth * tv_loss_depth)
             + opt.lambda_normal * (normal_loss + opt.lambda_tv_normal * tv_loss_normal)
+            + opt.lambda_normal * (dna_loss_term + opt.lambda_tv_normal * tv_loss_normal)
             + opt.lambda_opacity * opacity_loss
             # + opt.lambda_entropy * entropy_loss
             + opt.lambda_disk * disk_loss_term
+            + opt.lambda_road_mask * road_loss
         )
 
         loss.backward()
+
+        # Zero out certain gradients
+        if opt.dna_zero_grad and dataset.use_gt_normal and (iteration > opt.apply_dna_from_iter - 1) and (iteration < opt.apply_dna_until_iter + 1):
+            ignore_mask = gaussians.get_is_road.squeeze()
+
+            # No rotation and position gradients for road Gaussians
+            # gaussians._rotation.grad[ignore_mask] = 0.0
+            gaussians._xyz.grad[ignore_mask] = 0.0
+
+            if dataset.use_dna:
+                if prev_dna_loss is None:
+                    prev_dna_loss = dna_loss_term
+
+                if dna_loss_term > (prev_dna_loss + 0.001):
+                    print(f"Previous dna loss ({prev_dna_loss:0.8f}) is not the same as the current dna loss ({dna_loss_term:0.8f}) even though you specified to zero the gradients")
+                    prev_dna_loss = dna_loss_term
 
         iter_end.record()
 
@@ -280,6 +317,8 @@ def training(
                 print("Depth loss: ", depth_loss)
                 print("Normal loss: ", normal_loss)
                 print("Opacity loss: ", opacity_loss)
+                print("DNA loss: ", dna_loss_term)
+                print("Road loss: ", road_loss)
                 # print("Entropy loss: ", entropy_loss)
                 print("Radii max: ", radii.max())
                 print("Gaussian scales max: ", gaussians.get_scaling.max())
@@ -307,6 +346,8 @@ def training(
                 opacity_loss=opacity_loss,
                 # entropy_loss=entropy_loss,
                 disk_loss=disk_loss_term,
+                dna_loss=dna_loss_term,
+                road_loss=road_loss,
                 opt=opt,
             )
             if iteration in saving_iterations:
@@ -317,30 +358,21 @@ def training(
             # Densification
             if iteration < opt.densify_until_iter:
                 # Keep track of max radii in image-space for pruning
-                gaussians.max_radii2D[visibility_filter] = torch.max(
-                    gaussians.max_radii2D[visibility_filter], radii[visibility_filter]
-                )
-                gaussians.add_densification_stats(
-                    viewspace_point_tensor, visibility_filter
-                )
+                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                if (
-                    iteration > opt.densify_from_iter
-                    and iteration % opt.densification_interval == 0
-                ):
-                    size_threshold = (
-                        20 if iteration > opt.opacity_reset_interval else None
-                    )
+                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+
                     gaussians.densify_and_prune(
                         opt.densify_grad_threshold,
                         dataset.minimum_opacity,
                         scene.cameras_extent,
                         size_threshold,
+                        dont_prune_road=dataset.dont_prune_road,
                     )
 
-                if iteration % opt.opacity_reset_interval == 0 or (
-                    dataset.white_background and iteration == opt.densify_from_iter
-                ):
+                if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
             # Optimizer step
@@ -354,6 +386,11 @@ def training(
                     (gaussians.capture(), iteration),
                     scene.model_path + "/chkpnt" + str(iteration) + ".pth",
                 )
+
+        # Normal resetting
+        if dataset.reset_normals and iteration % opt.reset_normals_interval == 0:
+            reset_normal_mask = gaussians.get_is_road.squeeze()
+            gaussians.reset_normals(reset_normal_mask)
 
 
 def prepare_output_and_logger(args):
@@ -397,6 +434,8 @@ def training_report(
     opacity_loss=None,
     # entropy_loss=None,
     disk_loss=None,
+    dna_loss = None,
+    road_loss= None,
     opt=None,
 ):
     if tb_writer:
@@ -425,6 +464,12 @@ def training_report(
         if disk_loss is not None:
             tb_writer.add_scalar("train_loss_patches/disk_loss", disk_loss.item(), iteration)
 
+        if dna_loss is not None:
+            tb_writer.add_scalar("train_loss_patches/dna_loss", dna_loss.item(), iteration)
+
+        if road_loss is not None:
+            tb_writer.add_scalar("train_loss_patches/road_loss", road_loss.item(), iteration)
+
     # Report test and samples of training set
     if iteration in testing_iterations:
         torch.cuda.empty_cache()
@@ -452,12 +497,16 @@ def training_report(
                         *renderArgs,
                         return_depth=True,
                         return_normal=True,
+                        return_gt_normal = True,
+                        return_is_road = True,
                     )
 
                     image = torch.clamp(render_results["render"], 0.0, 1.0)
                     depth = render_results["render_depth"]
                     inv_depth = 1 / (depth + 0.000001)
                     normal = render_results["render_normal"]
+                    gt_normal_render = render_results.get("render_gt_normal", None)
+                    is_road_render = render_results.get("render_is_road", None)
                     # entropy = render_results["entropy"]
 
                     gt_image = torch.clamp(
@@ -469,6 +518,8 @@ def training_report(
 
                     # Convert [-1,1] range of the normals to [0,1] for float value visualization
                     normal_norm = (normal + 1) / 2
+                    if gt_normal_render is not None:
+                        gt_normal_render_norm = (gt_normal_render + 1) / 2
 
                     # entropy = (entropy - entropy.min()) / (entropy.max() - entropy.min())
 
@@ -493,6 +544,7 @@ def training_report(
                             inv_depth_norm[None, None],
                             global_step=iteration,
                         )  # [None, None] prepends an empty dimension for batch and channel
+
                         tb_writer.add_images(
                             config["name"]
                             + "_view_{}_normals/render".format(viewpoint.image_name),
@@ -500,58 +552,75 @@ def training_report(
                             global_step=iteration,
                         )
 
+                        if gt_normal_render is not None:
+                            tb_writer.add_images(
+                                config["name"]
+                                + "_view_{}_normals/gt_render".format(viewpoint.image_name),
+                                gt_normal_render_norm[None],
+                                global_step=iteration,
+                            )
+
+                        if is_road_render is not None:
+                            is_road_render = is_road_render[0, :, :] # take first channel only
+                            tb_writer.add_images(
+                                config["name"]
+                                + "_view_{}_is_road/render".format(viewpoint.image_name),
+                                is_road_render[None, None],
+                                global_step=iteration,
+                            )
+
                         # Renderings for perturbed viewpoints
-                        perturbed_viewpoints = perturb_viewpoint(viewpoint, scene.cameras_extent)
-                        for perturbed_name, perturbed_viewpoint in perturbed_viewpoints.items():
-                            pt_render_results = renderFunc(
-                                perturbed_viewpoint,
-                                scene.gaussians,
-                                *renderArgs,
-                                return_depth=True,
-                                return_normal=True,
-                            )
+                        # perturbed_viewpoints = perturb_viewpoint(viewpoint, scene.cameras_extent)
+                        # for perturbed_name, perturbed_viewpoint in perturbed_viewpoints.items():
+                        #     pt_render_results = renderFunc(
+                        #         perturbed_viewpoint,
+                        #         scene.gaussians,
+                        #         *renderArgs,
+                        #         return_depth=True,
+                        #         return_normal=True,
+                        #     )
 
-                            pt_image = torch.clamp(pt_render_results["render"], 0.0, 1.0)
-                            pt_depth = pt_render_results["render_depth"]
-                            pt_inv_depth = 1 / (pt_depth + 0.000001)
-                            pt_normal = pt_render_results["render_normal"]
-                            # pt_entropy = pt_render_results["entropy"]
+                        #     pt_image = torch.clamp(pt_render_results["render"], 0.0, 1.0)
+                        #     pt_depth = pt_render_results["render_depth"]
+                        #     pt_inv_depth = 1 / (pt_depth + 0.000001)
+                        #     pt_normal = pt_render_results["render_normal"]
+                        #     # pt_entropy = pt_render_results["entropy"]
 
-                            pt_inv_depth_norm = (pt_inv_depth - pt_inv_depth.min()) / (
-                                pt_inv_depth.max() - pt_inv_depth.min()
-                            )
+                        #     pt_inv_depth_norm = (pt_inv_depth - pt_inv_depth.min()) / (
+                        #         pt_inv_depth.max() - pt_inv_depth.min()
+                        #     )
 
-                            # Convert [-1,1] range of the normals to [0,1] for float value visualization
-                            pt_normal_norm = (pt_normal + 1) / 2
+                        #     # Convert [-1,1] range of the normals to [0,1] for float value visualization
+                        #     pt_normal_norm = (pt_normal + 1) / 2
 
-                            # pt_entropy = (pt_entropy - pt_entropy.min()) / (pt_entropy.max() - pt_entropy.min())
+                        #     # pt_entropy = (pt_entropy - pt_entropy.min()) / (pt_entropy.max() - pt_entropy.min())
 
-                            tb_writer.add_images(
-                                config["name"]
-                                + "_view_{}_perturbed/render/{}".format(viewpoint.image_name, perturbed_name),
-                                pt_image[None],
-                                global_step=iteration,
-                            )
+                        #     tb_writer.add_images(
+                        #         config["name"]
+                        #         + "_view_{}_perturbed/render/{}".format(viewpoint.image_name, perturbed_name),
+                        #         pt_image[None],
+                        #         global_step=iteration,
+                        #     )
 
-                            # tb_writer.add_images(
-                            #     config["name"]
-                            #     + "_view_{}_perturbed/entropy/{}".format(viewpoint.image_name, perturbed_name),
-                            #     pt_entropy[None],
-                            #     global_step=iteration,
-                            # )
+                        #     # tb_writer.add_images(
+                        #     #     config["name"]
+                        #     #     + "_view_{}_perturbed/entropy/{}".format(viewpoint.image_name, perturbed_name),
+                        #     #     pt_entropy[None],
+                        #     #     global_step=iteration,
+                        #     # )
 
-                            tb_writer.add_images(
-                                config["name"]
-                                + "_view_{}_perturbed/depths/{}".format(viewpoint.image_name, perturbed_name),
-                                pt_inv_depth_norm[None, None],
-                                global_step=iteration,
-                            )  # [None, None] prepends an empty dimension for batch and channel
-                            tb_writer.add_images(
-                                config["name"]
-                                + "_view_{}_perturbed/normals/{}".format(viewpoint.image_name, perturbed_name),
-                                pt_normal_norm[None],
-                                global_step=iteration,
-                            )
+                        #     tb_writer.add_images(
+                        #         config["name"]
+                        #         + "_view_{}_perturbed/depths/{}".format(viewpoint.image_name, perturbed_name),
+                        #         pt_inv_depth_norm[None, None],
+                        #         global_step=iteration,
+                        #     )  # [None, None] prepends an empty dimension for batch and channel
+                        #     tb_writer.add_images(
+                        #         config["name"]
+                        #         + "_view_{}_perturbed/normals/{}".format(viewpoint.image_name, perturbed_name),
+                        #         pt_normal_norm[None],
+                        #         global_step=iteration,
+                        #     )
 
                         # Save ground truth values and used masks only for the first iteration
                         if iteration == testing_iterations[0]:
@@ -677,7 +746,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=6009)
     parser.add_argument("--debug_from", type=int, default=-1)
     parser.add_argument("--detect_anomaly", action="store_true", default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[1_000, 5_000, 7_000, 10_000, 15_000, 20_000, 25_000, 30_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[10, 1_000, 5_000, 7_000, 10_000, 15_000, 20_000, 25_000, 30_000, 40_000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 15_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])

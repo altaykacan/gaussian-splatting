@@ -139,7 +139,6 @@ def rotate_vector_to_vector(v1: torch.Tensor, v2: torch.Tensor):
     Returns a rotation matrix that rotates v1 to align with v2.
 
     Code taken from DN-Splatter: https://github.com/maturk/dn-splatter/blob/925d985ecb64c6544ecde936de5e8a0dd06e5399/dn_splatter/dn_model.py#L1591
-
     """
     assert v1.dim() == v2.dim()
     assert v1.shape[-1] == 3

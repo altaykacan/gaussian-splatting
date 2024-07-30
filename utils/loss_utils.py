@@ -15,6 +15,7 @@ from torch.autograd import Variable
 from math import exp
 from utils.image_utils import shrink_bool_mask
 
+
 def constant_opacity_loss(opacities: torch.Tensor, target: float):
     """
     Loss term that penalizes any deviation from a target opacity
@@ -72,6 +73,7 @@ def total_variation_loss(depth: torch.Tensor, mask: torch.Tensor=None):
 
     return torch.mean(torch.abs(h_diff)) + torch.mean(torch.abs(w_diff))
 
+
 def log_depth_loss(network_output, gt, mask=None):
     """
     Loss term for depth regularization using a logarithm
@@ -85,9 +87,20 @@ def log_depth_loss(network_output, gt, mask=None):
 
     return torch.mean(torch.log(1 + torch.abs(network_output - gt)) * mask)
 
+def dna_loss(gaussians, mask):
+    """
+    Uses cosine similarity to orient each gaussian determined by a mask to be
+    the same as the saved ground truth normal direction
+    """
+    gt_normals = gaussians.get_gt_normals[mask]
+    normals =  gaussians.get_normals[mask]
+    # loss =  (1 - torch.abs(F.cosine_similarity(normals, gt_normals, dim=1, eps=1e-8))).mean()
+    loss = torch.abs(gt_normals - normals).mean()
+    return loss
+
 
 def l1_loss(network_output, gt):
-    return torch.abs((network_output - gt)).mean()
+    return torch.abs(network_output - gt).mean()
 
 
 def l1_loss_mask(network_output, gt, mask):
